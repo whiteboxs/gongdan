@@ -11,9 +11,9 @@ import redis
 
 def create_app():
     app = Flask(__name__)
-    app_context = app.app_context()
-    app_context.push()
-    app.secret_key = "1u4141414141244o14ufgqr&*"
+    # app_context = app.app_context()
+    # app_context.push()
+    # app.secret_key = "1u4141414141244o14ufgqr&*"
     # 注册蓝图，
     # app.register_blueprint(blueprint=blue)
 
@@ -21,7 +21,7 @@ def create_app():
     app.config.update(RESTFUL_JSON=dict(ensure_ascii=False))
     # tocker 秘钥
     app.config['JWT_SECRET_KEY'] = 'ruobhuyoqurogq^!$^&*@#'
-    app.config['JWT_ACCESS_TOKEN_EXPIRES'] = datetime.timedelta(hours=1)  # 设置访问令牌过期时间为1小时
+    app.config['JWT_ACCESS_TOKEN_EXPIRES'] = datetime.timedelta(hours=2)  # 设置访问令牌过期时间为1小时
     app.config['JWT_REFRESH_TOKEN_EXPIRES'] = datetime.timedelta(days=30)  # 设置刷新令牌过期时间为30天
     # 配置数据库
     # DB_URI = 'sqlite:///sqlite3.db'
@@ -29,6 +29,7 @@ def create_app():
     app.config['SELECT_KEY'] = '411ffdafqGR1'
     app.config['SQLALCHEMY_DATABASE_URI'] = DB_URI
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
 
     # # 配置redis
     # app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False

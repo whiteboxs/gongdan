@@ -30,6 +30,6 @@ def init_exts(app):
     db.init_app(app=app)
     migrate.init_app(app=app, db=db)
     api.init_app(app=app)
-    cors.init_app(app=app, supports_credentials=True)
+    cors.init_app(app=app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
  #    session.init_app(app=app)
     jwt.init_app(app=app)
