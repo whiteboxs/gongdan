@@ -257,7 +257,6 @@ class add_ticket(Resource):
         user_identity = get_jwt_identity()
         user_id = user_identity['id']
         # 查询输入的环境
-        print('1')
         # # 获取经办人
         # assignee = Assignee.query.filter_by(id=args['assignee_id']).first()
         # print(assignee.name,assignee.id)
