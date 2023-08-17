@@ -7,7 +7,7 @@ from .models import *
 # from flask import Blueprint
 from .utils.tools import user_login_required, admin_login_required
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
-
+from sqlalchemy import or_
 # from flask_wtf import FlaskForm
 # from wtforms import StringField, FileField
 
@@ -166,10 +166,6 @@ class admin_login(Resource):
         return jsonify(code=200, msg="登录成功")
 
 
-class user_session_check(Resource):
-    pass
-
-
 # 用户登录
 class user_login(Resource):
     def post(self):
@@ -188,25 +184,44 @@ class user_login(Resource):
         token = create_access_token(identity={"user": user.username, "id": user.id})
         # session["user_name"] = username
         # session["user_id"] = user.id
-        return jsonify(code="200", username=username, token=token, msg="登录成功")
+        return jsonify(code="200", username=username, token=token, user_id=user.id, msg="登录成功")
+
+    # 用户添加，查询，修改，
 
 
-# 用户登录
-# class user_login(Resource):
-#     def post(self):
-#         req_data = request.get_json()
-#         username = req_data.get("username")
-#         password = req_data.get("password")
-#         if not all([username, password]):
-#             return jsonify(code=200, msg="用户登录参数不全")
-#         # 查找用户账号    验证密码
-#         user = User.query.filter(User.username == username).first()
-#         if user is None or password != user.password:
-#             return jsonify(code=400, msg="管理员或者错误")
-#         # 保存session
-#         session["user_name"] = username
-#         session["user_id"] = user.id
-#         return jsonify(code=200, msg="登录成功")
+user_fields = {
+    'id': fields.Integer,
+    'department': fields.String,
+    'username': fields.String,
+    'create_time': fields.DateTime,
+    'tickets': fields.List(fields.Nested({
+        'id': fields.Integer,
+        'title': fields.String,
+        'description': fields.String,
+        'environment_id': fields.Integer,
+        'user_id': fields.Integer,
+        'assignee_id': fields.Integer,
+        'status': fields.String,
+        'attachment_url': fields.String,
+    })),
+    'feedbacks': fields.List(fields.Nested({
+        'id': fields.Integer,
+        # 其他反馈字段...
+    }))
+}
+
+
+class user(Resource):
+    @jwt_required()
+    @marshal_with(user_fields)
+    def get(self, user_id):
+        user = User.query.get(user_id)
+        return user
+
+
+
+
+
     # 用户退出登录
 class user_logout(Resource):
     @jwt_required()
@@ -275,6 +290,7 @@ class add_ticket(Resource):
             attachment_url = None
         try:
             ticket = Ticket(title=args['title'], description=args['description'], user_id=user_id, environment_id=args['environment_id'], assignee_id=args['assignee_id'], attachment_url=attachment_url)
+            print(attachment_url)
             environment = Environment.query.filter_by(id=args['environment_id']).first()
             if environment.name == "开发环境" or environment.name == "测试环境":
                 ticket.status = "未完成"
@@ -287,7 +303,7 @@ class add_ticket(Resource):
                        'description': ticket.description,
                        'environment': ticket.environment.name,
                        'user_id': ticket.user_id,
-                       'assignee': ticket.assignee.name,
+                       'assignee': ticket.assignee.id,
                        'status': ticket.status,
                        'attachment_url': ticket.attachment_url
 
@@ -296,7 +312,6 @@ class add_ticket(Resource):
             print(e)
             db.session.rollback()
             return jsonify(code=400, msg="发布工单失败")
-
 
 
 # 修改，删除，查询工单
@@ -365,12 +380,11 @@ user_fields = {
     'id': fields.Integer,
     'department': fields.String,
     'username': fields.String,
-    # 'password': fields.Integer
 }
 all_users_fields = {
     'code': fields.Integer,
     'status': fields.Integer,
-        'msg': fields.String,
+    'msg': fields.String,
     # user对象的字段进行匹配 对一个显示
     # 'data': fields.Nested(user_fields)
     # 下面查询是all 显示全部则加个fields.List
@@ -392,7 +406,7 @@ class all_users(Resource):
 
 # 查询环境标签
 environment_fields = {
-    #'tickets': fields.String
+    # 'tickets': fields.String
     'name': fields.String,
     'id': fields.Integer
 }
@@ -411,11 +425,11 @@ class all_environments(Resource):
     @marshal_with(all_environments_fields)
     def get(self):
         environments = Environment.query.all()
-        print(environments)
         return {'code': 200,
                 'msg': 'ok',
                 'data': environments
                 }
+
 
 # 查询所有经办人
 assignee_fields = {
@@ -449,7 +463,11 @@ class all_assignee(Resource):
 class all_tickets(Resource):
     @jwt_required()
     def get(self):
-        tickets = Ticket.query.all()
+        page = request.args.get('pagenum', default=1, type=int)  # 获取请求中的页码参数，默认为第一页
+        per_page = request.args.get('pagesize', default=10, type=int)  # 获取每页显示条数参数，默认为10条
+        tickets = Ticket.query.paginate(page=page, per_page=per_page)  # 使用 paginate 进行分页查询
+        total_count = tickets.total  # 获取总记录数
+        # tickets = Ticket.query.all()
         ticket_list = []
         for ticket in tickets:
             ticket_info = {
@@ -461,7 +479,7 @@ class all_tickets(Resource):
                 'update_time': ticket.update_time.strftime('%Y-%m-%d %H:%M:%S'),
                 'attachment_url': ticket.attachment_url,
                 'username': ticket.user.username,
-                'user_id':  ticket.user.id,
+                'user_id': ticket.user.id,
                 'environment': ticket.environment.name if ticket.environment else None,
                 'assignee': ticket.assignee.name if ticket.assignee else None
             }
@@ -469,7 +487,53 @@ class all_tickets(Resource):
             # 对 ticket_list 进行降序排序，根据 create_time
             sorted_tickets = sorted(ticket_list, key=lambda x: x['create_time'], reverse=True)
 
-        return {'code': 200, 'msg': 'ok', 'data': sorted_tickets}
+        return {'code': 200, 'msg': 'ok', 'count': total_count, 'page': page, "per_page": per_page, 'data': sorted_tickets}
+
+# 查询登录账号的工单
+class user_tickets(Resource):
+    @jwt_required()
+    def get(self):
+        page = request.args.get('pagenum', default=1, type=int)
+        per_page = request.args.get('pagesize', default=10, type=int)
+        user_identity = get_jwt_identity()
+        user_id = user_identity['id']
+
+        # 获取搜索关键字
+        keyword = request.args.get('keyword', '')
+
+        # 创建查询对象
+        query = Ticket.query.filter_by(user_id=user_id)
+
+        # 根据关键字进行搜索
+        if keyword:
+            query = query.filter(
+                or_(
+                    Ticket.title.contains(keyword),
+                    Ticket.description.contains(keyword)
+                )
+            )
+        # 分页查询
+        tickets = query.order_by(Ticket.create_time.desc()).paginate(page=page, per_page=per_page)
+        total_count = tickets.total
+        ticket_list = []
+
+        for ticket in tickets.items:
+            ticket_info = {
+                'id': ticket.id,
+                'title': ticket.title,
+                'description': ticket.description,
+                'status': ticket.status,
+                'create_time': ticket.create_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'update_time': ticket.update_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'attachment_url': ticket.attachment_url,
+                'username': ticket.user.username,
+                'user_id': ticket.user.id,
+                'environment': ticket.environment.name if ticket.environment else None,
+                'assignee': ticket.assignee.name if ticket.assignee else None
+            }
+            ticket_list.append(ticket_info)
+
+        return {'code': 200, 'msg': 'ok', 'count': total_count, 'page': page, "per_page": per_page, 'data': ticket_list}
 
 
 
@@ -510,6 +574,9 @@ class add_feedback(Resource):
             print(e)
             db.session.rollback()
             return jsonify(code=400, msg="工单回复失败")
+
+
+
 
 
 class all_feedbacks(Resource):

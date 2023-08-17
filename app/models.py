@@ -104,6 +104,7 @@ class Feedback(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     comment = db.Column(db.Text)
     create_time = db.Column(db.DateTime, default=datetime.utcnow)
+    update_time = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
     attachment_url = db.Column(db.String(255))
     # 一对多
     ticket_id = db.Column(db.Integer, db.ForeignKey('ticket.id'))
