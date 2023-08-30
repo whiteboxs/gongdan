@@ -58,7 +58,7 @@ class User(db.Model):
     update_time = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
     # 多对一
     tickets = db.relationship('Ticket', backref='user')
-    feedbacks = db.relationship('Feedback', backref='user')
+    # feedbacks = db.relationship('Feedback', backref='user')
     # tags = db.relationship('Tag', backref='user')
 
 
@@ -67,9 +67,13 @@ class Assignee(db.Model):
     __tablename__ = "assignee"
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(16), nullable=False, unique=True)
+    department = db.Column(db.String(16), nullable=False)
     create_time = db.Column(db.DateTime, index=True, default=datetime.now)
     # 多对一，一个经办人有多个工单，外建放在了工单表里
     tickets = db.relationship('Ticket', backref='assignee')
+
+
+
 
 
 class Ticket(db.Model):
@@ -81,12 +85,13 @@ class Ticket(db.Model):
     create_time = db.Column(db.DateTime, default=datetime.now)
     update_time = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
     attachment_url = db.Column(db.String(255))
+    # comment = db.Column(db.Text)
     # 1对多
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
     environment_id = db.Column(db.Integer, db.ForeignKey('environment.id'))
     assignee_id = db.Column(db.Integer, db.ForeignKey('assignee.id'))
-    # 多对一
     feedbacks = db.relationship('Feedback', backref='ticket')
+
 
     # 多对多
     # tags = db.relationship("Tag", secondary="ticket_to_tag", backref="ticket")
@@ -108,8 +113,8 @@ class Feedback(db.Model):
     attachment_url = db.Column(db.String(255))
     # 一对多
     ticket_id = db.Column(db.Integer, db.ForeignKey('ticket.id'))
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-    assignee_id = db.Column(db.Integer, db.ForeignKey('assignee.id'))
+    # user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    # assignee_id = db.Column(db.Integer, db.ForeignKey('assignee.id'))
 
 
 # 中间表
@@ -122,13 +127,13 @@ class Feedback(db.Model):
 
 
 #  搜索表
-class SearchHistory(db.Model):
-    __tablename__ = "search_history"
-    id = db.Column(db.Integer, primary_key=True)  # id号(独一无二的)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))  # 所属用户
-    keyword = db.Column(db.String(64), nullable=False)  # 关键字搜索
-    # index 设置的是什么 设置的是索引 索引就是帮助你更快地找到对应的数据
-    create_time = db.Column(db.DateTime, index=True, default=datetime.now)  # 创建时间
+# class SearchHistory(db.Model):
+#     __tablename__ = "search_history"
+#     id = db.Column(db.Integer, primary_key=True)  # id号(独一无二的)
+#     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))  # 所属用户
+#     keyword = db.Column(db.String(64), nullable=False)  # 关键字搜索
+#     # index 设置的是什么 设置的是索引 索引就是帮助你更快地找到对应的数据
+#     create_time = db.Column(db.DateTime, index=True, default=datetime.now)  # 创建时间
 
 # # 评论表
 # class Comment(db.Model):

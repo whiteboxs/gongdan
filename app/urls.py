@@ -40,12 +40,14 @@ api.add_resource(all_environments, '/api/all/environments')
 api.add_resource(all_tickets, '/api/all/tickets')
 # 查询登录用户订单
 api.add_resource(user_tickets, '/api/user_tickets')
+# 查询用户需要处理的工单
+api.add_resource(ticket_processing, '/api/ticket_processing')
+
+# 新增反馈信息
+api.add_resource(ticket_processing_feedbacks, '/api/ticket_processing_feedbacks')
 
 
-# 新增反馈表
-api.add_resource(add_feedback, '/api/feedback')
-# 查询所有反馈
-api.add_resource(all_feedbacks, '/api/all/feedbacks')
+
 
 
 

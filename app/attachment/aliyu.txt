@@ -1,0 +1,14 @@
+
+
+/home/js/bry-pointssystem-vue
+
+
+
+path_name="bry-pointssystem-vue"
+dist_name="jfxt"
+test -d /data/web/VUEs/backup ||  mkdir -p /data/web/VUEs/backup
+test -d /data/web/VUEs/${dist_name} ||  mkdir -p /data/web/VUEs/${dist_name}
+
+cp -r /data/web/VUEs/${dist_name} /data/web/VUEs/backup/${dist_name}_`date +"%F-%T"`
+
+rsync -trovpgP /home/js/${path_name}/dist/* /data/web/VUEs/${dist_name}

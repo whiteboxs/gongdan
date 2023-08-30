@@ -6,8 +6,10 @@ import os
 from .models import *
 # from flask import Blueprint
 from .utils.tools import user_login_required, admin_login_required
-from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
-from sqlalchemy import or_
+from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, create_refresh_token
+from sqlalchemy import or_, and_
+from werkzeug.datastructures import FileStorage
+import uuid
 # from flask_wtf import FlaskForm
 # from wtforms import StringField, FileField
 
@@ -204,10 +206,6 @@ user_fields = {
         'status': fields.String,
         'attachment_url': fields.String,
     })),
-    'feedbacks': fields.List(fields.Nested({
-        'id': fields.Integer,
-        # 其他反馈字段...
-    }))
 }
 
 
@@ -258,6 +256,8 @@ class environment(Resource):
 
 
 class add_ticket(Resource):
+    def __init__(self):
+        self.attachment_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'attachment')
     @jwt_required()
     def post(self):
         # restful创建传入标准
@@ -266,31 +266,29 @@ class add_ticket(Resource):
         parser.add_argument('description', type=str, location='form')
         parser.add_argument('environment_id', type=int, required=True, location='form')
         parser.add_argument('assignee_id', type=int, required=True, location='form')
-        parser.add_argument('attachment', type=FileStorage, location='files', required=False)
+        parser.add_argument('attachment', type=list, location='files', required=False, action='append')
         args = parser.parse_args()
-        # user_id = g.user_id
         user_identity = get_jwt_identity()
         user_id = user_identity['id']
-        # 查询输入的环境
-        # # 获取经办人
-        # assignee = Assignee.query.filter_by(id=args['assignee_id']).first()
-        # print(assignee.name,assignee.id)
-        # 获取上传的附件文件
-        attachment_file = args['attachment']
-        # 处理附件文件，例如保存到服务器
-        if attachment_file:
-            filename = secure_filename(attachment_file.filename)
-            # 获取当前脚本的绝对路径
-            script_dir = os.path.dirname(os.path.abspath(__file__))
-            attachment_folder = os.path.join(script_dir, 'attachment')
-            attachment_file.save(os.path.join(attachment_folder, filename))
-            # 文件的绝对存放路径
-            attachment_url = (os.path.join(attachment_folder, filename))
+        attachment_files = request.files.getlist('attachment')
+        attachment_urls = []
+        if attachment_files:
+            if not os.path.exists(self.attachment_folder):
+                os.makedirs(self.attachment_folder)
+
+            for attachment_file in attachment_files:
+                original_filename = secure_filename(attachment_file.filename)
+                filename, file_extension = os.path.splitext(original_filename)  # 提取文件名和扩展名
+                unique_filename = str(uuid.uuid4()) + file_extension  # 添加扩展名
+                attachment_path = os.path.join(self.attachment_folder, unique_filename)
+                attachment_file.save(attachment_path)
+                attachment_urls.append(attachment_path)
+            attachment_urls = ', '.join(attachment_urls)  # 将列表转换为字符串传入数据库
         else:
-            attachment_url = None
+            attachment_urls = None
         try:
-            ticket = Ticket(title=args['title'], description=args['description'], user_id=user_id, environment_id=args['environment_id'], assignee_id=args['assignee_id'], attachment_url=attachment_url)
-            print(attachment_url)
+            ticket = Ticket(title=args['title'], description=args['description'], user_id=user_id, environment_id=args['environment_id'], assignee_id=args['assignee_id'], attachment_url=attachment_urls)
+            print(attachment_urls)
             environment = Environment.query.filter_by(id=args['environment_id']).first()
             if environment.name == "开发环境" or environment.name == "测试环境":
                 ticket.status = "未完成"
@@ -305,7 +303,7 @@ class add_ticket(Resource):
                        'user_id': ticket.user_id,
                        'assignee': ticket.assignee.id,
                        'status': ticket.status,
-                       'attachment_url': ticket.attachment_url
+                       'attachment_url': ticket.attachment_url,
 
                    }, 201
         except Exception as e:
@@ -465,11 +463,12 @@ class all_tickets(Resource):
     def get(self):
         page = request.args.get('pagenum', default=1, type=int)  # 获取请求中的页码参数，默认为第一页
         per_page = request.args.get('pagesize', default=10, type=int)  # 获取每页显示条数参数，默认为10条
-        tickets = Ticket.query.paginate(page=page, per_page=per_page)  # 使用 paginate 进行分页查询
+        # 查询数据库中的所有订单，并按照创建时间降序排序
+        tickets = Ticket.query.order_by(Ticket.create_time.desc()).paginate(page=page, per_page=per_page)
         total_count = tickets.total  # 获取总记录数
-        # tickets = Ticket.query.all()
+        # tickets = Ticket.query.all(.order_by(Feedback.create_time.desc()))
         ticket_list = []
-        for ticket in tickets:
+        for ticket in tickets.items:
             ticket_info = {
                 'id': ticket.id,
                 'title': ticket.title,
@@ -478,8 +477,8 @@ class all_tickets(Resource):
                 'create_time': ticket.create_time.strftime('%Y-%m-%d %H:%M:%S'),
                 'update_time': ticket.update_time.strftime('%Y-%m-%d %H:%M:%S'),
                 'attachment_url': ticket.attachment_url,
-                'username': ticket.user.username,
-                'user_id': ticket.user.id,
+                'reporter': ticket.user.username,
+                'reporter_id': ticket.user.id,
                 'environment': ticket.environment.name if ticket.environment else None,
                 'assignee': ticket.assignee.name if ticket.assignee else None
             }
@@ -519,15 +518,15 @@ class user_tickets(Resource):
 
         for ticket in tickets.items:
             ticket_info = {
-                'id': ticket.id,
+                'ticket_id': ticket.id,
                 'title': ticket.title,
                 'description': ticket.description,
                 'status': ticket.status,
                 'create_time': ticket.create_time.strftime('%Y-%m-%d %H:%M:%S'),
                 'update_time': ticket.update_time.strftime('%Y-%m-%d %H:%M:%S'),
                 'attachment_url': ticket.attachment_url,
-                'username': ticket.user.username,
-                'user_id': ticket.user.id,
+                'reporter': ticket.user.username,
+                'reporter_id': ticket.user.id,
                 'environment': ticket.environment.name if ticket.environment else None,
                 'assignee': ticket.assignee.name if ticket.assignee else None
             }
@@ -535,45 +534,100 @@ class user_tickets(Resource):
 
         return {'code': 200, 'msg': 'ok', 'count': total_count, 'page': page, "per_page": per_page, 'data': ticket_list}
 
+class ticket_processing(Resource):
+    @jwt_required()
+    def get(self):
+        page = request.args.get('pagenum', default=1, type=int)
+        per_page = request.args.get('pagesize', default=10, type=int)
+        user_identity = get_jwt_identity()
+        loginname = user_identity['user']
+        print(loginname)
+        # 获取搜索关键字
+        keyword = request.args.get('keyword', '')
+        # 对登录用户和经办人id进行匹配
+        # 创建查询对象
+        query = Ticket.query.filter(Ticket.assignee.has(Assignee.name == loginname))
+
+        # 根据关键字进行搜索
+        if keyword:
+            query = query.filter(
+                or_(
+                    Ticket.title.contains(keyword),
+                    Ticket.description.contains(keyword)
+                )
+            )
+        # 分页查询
+        tickets = query.order_by(Ticket.create_time.desc()).paginate(page=page, per_page=per_page)
+        total_count = tickets.total
+        ticket_list = []
+
+        for ticket in tickets.items:
+            ticket_info = {
+                'ticket_id': ticket.id,
+                'title': ticket.title,
+                'description': ticket.description,
+                'status': ticket.status,
+                'create_time': ticket.create_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'update_time': ticket.update_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'attachment_url': ticket.attachment_url,
+                'reporter': ticket.user.username,
+                'reporter_id': ticket.user.id,
+                'environment': ticket.environment.name if ticket.environment else None,
+                'assignee': ticket.assignee.name if ticket.assignee else None,
+                'comment': [],
+            }
+            for feedback in ticket.feedbacks:
+                comment_info = {
+                    'comment_id': feedback.id,
+                    'comment': feedback.comment,
+                    'create_time': feedback.create_time.strftime('%Y-%m-%d %H:%M:%S'),
+                    'attachment_url': feedback.attachment_url
+                }
+                ticket_info['comments'].append(comment_info)
+            ticket_list.append(ticket_info)
+
+        return {'code': 200, 'msg': 'ok', 'count': total_count, 'page': page, "per_page": per_page, 'data': ticket_list}
 
 
-
-# 查询所有订单的反馈
-class add_feedback(Resource):
+# 进行工单创建
+class ticket_processing_feedbacks(Resource):
     @jwt_required()
     def post(self):
-        parser = reqparse.RequestParser()
-        parser.add_argument('comment', type=str, required=True)
-        parser.add_argument('ticket_id', type=int, required=True)
-        args = parser.parse_args()
-        # user_id = g.user_id
-        ticket = Ticket.query.filter_by(id=args['ticket_id']).all()
-        # # 获取上传的附件文件
-        # attachment_file = args['attachment']
-        # # 处理附件文件，例如保存到服务器
-        # if attachment_file:
-        #     filename = secure_filename(attachment_file.filename)
-        #     attachment_file.save('C:\\Users\\Administrator\\PycharmProjects\\pythonProject3\\restful-gogndan\\app\\attachment\\' + filename)
-        #     attachment_url = f'C:\\Users\\Administrator\\PycharmProjects\\pythonProject3\\restful-gogndan\\app\\attachment\\{filename}'
-        # else:
-        #     attachment_url = None
-        try:
-            for i in ticket:
-                print(i.user.id, i.user.username, i.assignee.id, i.assignee.name, i.id)
-                feedback = Feedback(comment=args['comment'], user_id=i.user.id, assignee_id=i.assignee.id, ticket_id=i.id)
-                db.session.add(feedback)
-                db.session.commit()
-            return {
-                       'id': feedback.id,
-                       'comment': feedback.comment,
-                       'user_id': feedback.user.id,
-                       'environment_id': feedback.assignee_id,
-                       'ticket_id': feedback.ticket_id
-                   }, 201
-        except Exception as e:
-            print(e)
-            db.session.rollback()
-            return jsonify(code=400, msg="工单回复失败")
+        page = request.args.get('pagenum', default=1, type=int)
+        per_page = request.args.get('pagesize', default=10, type=int)
+        # 获取登录者的id
+        user_identity = get_jwt_identity()
+        user_id = user_identity['id']
+        # 对登录用户和经办人id进行匹配
+        condition = Feedback.assignee_id == user_id
+
+        feedback = Feedback.query.filter(condition).order_by(Feedback.create_time.desc()).paginate(page=page, per_page=per_page, error_out=False)
+
+        # 分页查询
+        total_count = feedback.total
+        feedback_list = []
+
+        for item in feedback.items:
+            ticket_info = {
+                'ticket_id': item.ticket.id,
+                'title': item.ticket.title,
+                'description': item.ticket.description,
+                'status': item.ticket.status,
+                'ticket_create_time': item.ticket.create_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'ticket_attachment_url': item.ticket.attachment_url,
+                'reporter': item.ticket.user.username,
+                'reporter_id': item.ticket.user.id,
+                'ticket_environment': item.ticket.environment.name if item.ticket.environment else None,
+                'assignee': item.ticket.assignee.name if item.ticket.assignee else None,
+                'feedback_id': item.id,
+                'comment': item.comment,
+                'feedback_create_time': item.create_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'feedback_update_time': item.update_time.strftime('%Y-%m-%d %H:%M:%S'),
+                'feedback_attachment_url': item.attachment_url
+            }
+            feedback_list.append(ticket_info)
+
+        return {'code': 200, 'msg': 'ok', 'count': total_count, 'page': page, "per_page": per_page, 'data': feedback_list}
 
 
 

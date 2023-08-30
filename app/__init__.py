@@ -22,7 +22,7 @@ def create_app():
     # tocker 秘钥
     app.config['JWT_SECRET_KEY'] = 'ruobhuyoqurogq^!$^&*@#'
     app.config['JWT_ACCESS_TOKEN_EXPIRES'] = datetime.timedelta(hours=2)  # 设置访问令牌过期时间为1小时
-    app.config['JWT_REFRESH_TOKEN_EXPIRES'] = datetime.timedelta(days=30)  # 设置刷新令牌过期时间为30天
+    app.config['JWT_REFRESH_TOKEN_EXPIRES'] = datetime.timedelta(days=7)  # 设置刷新令牌过期时间为30天
     # 配置数据库
     # DB_URI = 'sqlite:///sqlite3.db'
     DB_URI = 'mysql+pymysql://test:123456@192.168.86.123:3306/restful'
