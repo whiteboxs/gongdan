@@ -1,4 +1,4 @@
-from flask import jsonify, request, session, g
+from flask import jsonify, request, session, url_for
 from flask_restful import Resource, fields, marshal_with, reqparse
 from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
@@ -266,7 +266,7 @@ class add_ticket(Resource):
         parser.add_argument('description', type=str, location='form')
         parser.add_argument('environment_id', type=int, required=True, location='form')
         parser.add_argument('assignee_id', type=int, required=True, location='form')
-        parser.add_argument('attachment', type=list, location='files', required=False, action='append')
+        parser.add_argument('attachment', type=list, location='files', _external=False, required=False, action='append')
         args = parser.parse_args()
         user_identity = get_jwt_identity()
         user_id = user_identity['id']
@@ -282,7 +282,10 @@ class add_ticket(Resource):
                 unique_filename = str(uuid.uuid4()) + file_extension  # 添加扩展名
                 attachment_path = os.path.join(self.attachment_folder, unique_filename)
                 attachment_file.save(attachment_path)
-                attachment_urls.append(attachment_path)
+                attachment_url_path = url_for('attachment_path', filename=filename, _external=True)  # 生成附件访问链接
+                print('attachment_url_path', attachment_url_path)
+                attachment_urls.append(attachment_url_path)
+
             attachment_urls = ', '.join(attachment_urls)  # 将列表转换为字符串传入数据库
         else:
             attachment_urls = None
