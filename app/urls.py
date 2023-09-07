@@ -46,6 +46,9 @@ api.add_resource(ticket_processing, '/api/ticket_processing')
 # 新增反馈信息
 api.add_resource(ticket_processing_feedbacks, '/api/ticket_processing_feedbacks')
 
+#附件访问接口
+api.add_resource(AttachmentResource, '/attachment/<string:filename>')
+
 
 
 

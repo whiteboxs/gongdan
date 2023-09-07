@@ -84,7 +84,7 @@ class Ticket(db.Model):
     status = db.Column(db.Enum("待审核", "未完成", "已完成"), nullable=False, default="待审核")
     create_time = db.Column(db.DateTime, default=datetime.now)
     update_time = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
-    attachment_url = db.Column(db.String(255))
+    attachment_url = db.Column(db.String(512))
     # comment = db.Column(db.Text)
     # 1对多
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))

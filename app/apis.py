@@ -1,6 +1,7 @@
-from flask import jsonify, request, session, url_for
+# -*- coding: utf-8 -*-
+
+from flask import jsonify, request, session, send_from_directory
 from flask_restful import Resource, fields, marshal_with, reqparse
-from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
 import os
 from .models import *
@@ -10,8 +11,7 @@ from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identi
 from sqlalchemy import or_, and_
 from werkzeug.datastructures import FileStorage
 import uuid
-# from flask_wtf import FlaskForm
-# from wtforms import StringField, FileField
+
 
 # token头 Bearer
 """
@@ -266,7 +266,7 @@ class add_ticket(Resource):
         parser.add_argument('description', type=str, location='form')
         parser.add_argument('environment_id', type=int, required=True, location='form')
         parser.add_argument('assignee_id', type=int, required=True, location='form')
-        parser.add_argument('attachment', type=list, location='files', _external=False, required=False, action='append')
+        parser.add_argument('attachment', type=FileStorage, location='files', required=False, action='append')
         args = parser.parse_args()
         user_identity = get_jwt_identity()
         user_id = user_identity['id']
@@ -277,12 +277,14 @@ class add_ticket(Resource):
                 os.makedirs(self.attachment_folder)
 
             for attachment_file in attachment_files:
-                original_filename = secure_filename(attachment_file.filename)
+                original_filename = attachment_file.filename
                 filename, file_extension = os.path.splitext(original_filename)  # 提取文件名和扩展名
+                print('file_extension', file_extension)
                 unique_filename = str(uuid.uuid4()) + file_extension  # 添加扩展名
+                print('扩展名', filename, file_extension, unique_filename)
                 attachment_path = os.path.join(self.attachment_folder, unique_filename)
                 attachment_file.save(attachment_path)
-                attachment_url_path = url_for('attachment_path', filename=filename, _external=True)  # 生成附件访问链接
+                attachment_url_path = request.host_url + 'attachment/' + unique_filename  # 生成附件访问链接
                 print('attachment_url_path', attachment_url_path)
                 attachment_urls.append(attachment_url_path)
 
@@ -313,6 +315,17 @@ class add_ticket(Resource):
             print(e)
             db.session.rollback()
             return jsonify(code=400, msg="发布工单失败")
+
+# 附件访问
+class AttachmentResource(Resource):
+    def __init__(self):
+        self.attachment_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'attachment')
+    def get(self, filename):
+        attachment_path = os.path.join(self.attachment_folder)
+        print(attachment_path)
+        return send_from_directory(attachment_path, filename)
+
+
 
 
 # 修改，删除，查询工单
