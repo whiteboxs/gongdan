@@ -16,20 +16,20 @@ from datetime import datetime
 
 
 # 管理员表
-class Admin(db.Model):
-    __tablename__ = "admin"
-    id = db.Column(db.Integer, primary_key=True)  # id号(独一无二的)
-    username = db.Column(db.String(64), nullable=False, unique=True)  # 账号用户名
-    password = db.Column(db.String(64), nullable=False)  # 密码
-    # 枚举 只能存的是枚举里面设置的内容 不是设置的规定的内容的话 是会报错的
-    power = db.Column(db.Enum("超级管理员", "普通管理员"), nullable=False, default="普通管理员")  # 管理员权限
-    status = db.Column(db.Boolean, nullable=False, default=True)  # 真假代表正常异常状态
-    # index 设置的是什么 设置的是索引 索引就是帮助你更快地找到对应的数据
-    create_time = db.Column(db.DateTime, index=True, default=datetime.now)  # 创建时间
-    # onupdate 自动更新 每一次 增删查改这个表都会 自动更新一下时间
-    update_time = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)  # 最近一次登录时间
-    # 认领 关联
-    # tags = db.relationship("Tag", backref="admin")  # 1对多对应外键 在在tags.admin.username用户名
+# class Admin(db.Model):
+#     __tablename__ = "admin"
+#     id = db.Column(db.Integer, primary_key=True)  # id号(独一无二的)
+#     username = db.Column(db.String(64), nullable=False, unique=True)  # 账号用户名
+#     password = db.Column(db.String(64), nullable=False)  # 密码
+#     # 枚举 只能存的是枚举里面设置的内容 不是设置的规定的内容的话 是会报错的
+#     power = db.Column(db.Enum("超级管理员", "普通管理员"), nullable=False, default="普通管理员")  # 管理员权限
+#     status = db.Column(db.Boolean, nullable=False, default=True)  # 真假代表正常异常状态
+#     # index 设置的是什么 设置的是索引 索引就是帮助你更快地找到对应的数据
+#     create_time = db.Column(db.DateTime, index=True, default=datetime.now)  # 创建时间
+#     # onupdate 自动更新 每一次 增删查改这个表都会 自动更新一下时间
+#     update_time = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)  # 最近一次登录时间
+#     # 认领 关联
+#     # tags = db.relationship("Tag", backref="admin")  # 1对多对应外键 在在tags.admin.username用户名
 
 
 # 标签
@@ -54,12 +54,27 @@ class User(db.Model):
     username = db.Column(db.String(32), nullable=False, unique=True)  # 用户名 nullable 是否可以为空,unique=True保证字段唯一
     password = db.Column(db.String(64), nullable=False)  # 密码 nullable 是否可以为空
     status = db.Column(db.Boolean, nullable=False, default=True)  # 真假代表正常异常状态
+    userPic = db.Column(db.String(512))
     create_time = db.Column(db.DateTime, index=True, default=datetime.now)  # 创建时间
     update_time = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
     # 多对一
     tickets = db.relationship('Ticket', backref='user')
     # feedbacks = db.relationship('Feedback', backref='user')
     # tags = db.relationship('Tag', backref='user')
+    # 一对多，一个role有多个用户，外键
+    role_id = db.Column(db.Integer, db.ForeignKey('role.id'))
+
+
+#  角色表
+class Role(db.Model):
+    # 表名
+    __tablename__ = "role"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)  # 主键没有提升要硬输入
+    role_name = db.Column(db.Enum("超级管理员", "普通用户"), default="None")
+    create_time = db.Column(db.DateTime, index=True, default=datetime.now)  # 创建时间
+    update_time = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    # 多对一  一个角色有多个用户，外键放在user表里
+    users = db.relationship('User', backref='role')
 
 
 # 经办人表
@@ -71,9 +86,7 @@ class Assignee(db.Model):
     create_time = db.Column(db.DateTime, index=True, default=datetime.now)
     # 多对一，一个经办人有多个工单，外建放在了工单表里
     tickets = db.relationship('Ticket', backref='assignee')
-
-
-
+    # feedbacks = db.relationship('Feedback', backref='assignee')
 
 
 class Ticket(db.Model):
@@ -90,8 +103,8 @@ class Ticket(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
     environment_id = db.Column(db.Integer, db.ForeignKey('environment.id'))
     assignee_id = db.Column(db.Integer, db.ForeignKey('assignee.id'))
+    # 多对一
     feedbacks = db.relationship('Feedback', backref='ticket')
-
 
     # 多对多
     # tags = db.relationship("Tag", secondary="ticket_to_tag", backref="ticket")
@@ -110,7 +123,7 @@ class Feedback(db.Model):
     comment = db.Column(db.Text)
     create_time = db.Column(db.DateTime, default=datetime.utcnow)
     update_time = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
-    attachment_url = db.Column(db.String(255))
+    attachment_url = db.Column(db.String(512))
     # 一对多
     ticket_id = db.Column(db.Integer, db.ForeignKey('ticket.id'))
     # user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
@@ -183,4 +196,26 @@ class Feedback(db.Model):
 #     order_id = db.Column(db.Integer, db.ForeignKey("order.id"))  # 多对多的关系表，加入要关系的2个外键id
 #     tag_id = db.Column(db.Integer, db.ForeignKey("tag.id"))  # 多对多的关系表，加入要关系的2个外键id
 #
-#
+class K8s_job(db.Model):
+    __tablename__ = 'k8s_job'
+    id = db.Column(db.Integer, primary_key=True)
+    job_name = db.Column(db.String(255), nullable=False)
+    job_path = db.Column(db.String(512), default="/data/jenkins/slave/workspace")
+    job_info = db.Column(db.Text)
+    create_time = db.Column(db.DateTime, default=datetime.now)
+    update_time = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    #  多对一
+    job_build_ids = db.relationship('K8s_build_id', backref='k8s_job')
+
+
+class K8s_build_id(db.Model):
+    __tablename__ = 'k8s_build_id'
+    id = db.Column(db.Integer, primary_key=True)
+    job_build_id = db.Column(db.Integer)
+    create_time = db.Column(db.DateTime, default=datetime.now)
+    update_time = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    # 1对多  外键放多的里面
+    k8s_job_id = db.Column(db.Integer, db.ForeignKey('k8s_job.id'))
+
+
+
