@@ -12,7 +12,6 @@ from sqlalchemy import or_, and_
 from werkzeug.datastructures import FileStorage
 import uuid
 
-
 # token头 Bearer
 """
 管理员
@@ -140,7 +139,7 @@ class user_register(Resource):
         username = req_data.get("username")
         password = req_data.get("password")
         department = req_data.get("department")
-        user = User(username=username, password=password)
+        user = User(username=username, password=password, department=department)
         try:
             db.session.add(user)
             db.session.commit()
@@ -168,6 +167,35 @@ class admin_login(Resource):
         return jsonify(code=200, msg="登录成功")
 
 
+class add_user(Resource):
+    @jwt_required()
+    def post(self):
+        # restful创建传入标准
+        parser = reqparse.RequestParser()
+        parser.add_argument('username', type=str, required=True, location='form')
+        parser.add_argument('password', type=str, location='form')
+        parser.add_argument('department', type=str, required=True, location='form')
+        parser.add_argument('role_id', type=int, required=True, location='form')
+        args = parser.parse_args()
+        try:
+            user = User(username=args['username'], password=args['password'], department=args['department'], role_id=args['role_id'])
+            db.session.add(user)
+            db.session.commit()
+            # 更新工单的附件名和链接字段
+            return {
+                       'msg': '创建用户完成',
+                       'id': user.id,
+                       'username': user.username,
+                       'department': user.department,
+                       'status': user.status,
+                       'role_id': user.role_id
+                   }, 201
+        except Exception as e:
+            print(e)
+            db.session.rollback()
+            return jsonify(code=400, msg="创建用户失败")
+
+
 # 用户登录
 class user_login(Resource):
     def post(self):
@@ -186,11 +214,10 @@ class user_login(Resource):
         token = create_access_token(identity={"user": user.username, "id": user.id})
         # session["user_name"] = username
         # session["user_id"] = user.id
-        return jsonify(code="200", username=username, token=token, user_id=user.id, msg="登录成功")
-
-    # 用户添加，查询，修改，
+        return jsonify(code=200, username=username, token=token, user_id=user.id, msg="登录成功")
 
 
+# 用户添加，查询，修改，删除
 user_fields = {
     'id': fields.Integer,
     'department': fields.String,
@@ -209,18 +236,120 @@ user_fields = {
 }
 
 
-class user(Resource):
+class userinfo(Resource):
     @jwt_required()
     @marshal_with(user_fields)
     def get(self, user_id):
-        user = User.query.get(user_id)
+        user = User.query.get
         return user
 
+    def put(self, user_id):
+        # user = User.query.get(user_id)
+        # user_identity = get_jwt_identity()
+        # user_id = user_identity['id']
+        # username = user_identity['user']
+        # print(user_id, username)
+        # 传入标签 获取sesion看有没有登录
+        parser = reqparse.RequestParser()
+        parser.add_argument('username', type=str, location='form')
+        parser.add_argument('department', type=str, location='form')
+        parser.add_argument('user_status', type=str, location='args')
+        parser.add_argument('role_id', type=int, location='form')
+        parser.add_argument('password', type=str, location='form')
+        args = parser.parse_args()
+        # 将 user_status 转换为布尔值
+
+        if args['user_status'] is not None:
+            print(args['user_status'])
+            try:
+                user_status = args['user_status'].lower() == 'true'  # 将字符串转换为布尔值
+                print(user_status)
+                # 根据user_id查询并更新user_status
+                User.query.filter_by(id=user_id).update({"status": user_status})
+                db.session.commit()
+                return jsonify(code=200, user_id=user_id, user_status=user_status, msg="修改用户状态成功")
+            except Exception as e:
+                print(e)
+                db.session.rollback()  # 数据库回滚
+                return jsonify(code=400, msg="修改用户状态失败")
+        elif args['username'] is not None:
+            try:
+                print(args['username'], args['department'],args['role_id'],args['password'])
+                user = User.query.get
+                user.username = args['username']
+                user.department = args['department']
+                user.role_id = args['role_id']
+                user.password = args['password']
+                # User.query.filter_by(id=user_id).update({"username": args['username']}, {"department": args['department']}, {"role_id": args['role_id']}, {"password": args['password']})  # 根据user_id查询并更新username
+                db.session.commit()
+                return jsonify(code=200, username=args['username'], department=args['department'], role_id=args['role_id'], password=args['password'], msg="修改成功")
+            except Exception as e:
+                print(e)
+                db.session.rollback()  # 数据库回滚
+                return jsonify(code=400, msg="修改用户信息失败")
+        else:
+            return jsonify(code=400, msg="参数不完整，没有此账号")
+
+    def delete(self, user_id):
+        user = User.query.get
+
+        if not user:
+            return {'msg': '用户没有找到'}, 404
+        db.session.delete(user)
+        db.session.commit()
+        return {'msg': '用户已删除'}, 204
 
 
+class userstatus(Resource):
+    @jwt_required()
+    def put(self, user_id, user_status):
+        try:
+            user = User.objects.get
+            print(user.status)
+        except User.DoesNotExist:
+            return {'error': 'User not found'}, 404
+
+        if not isinstance(user_status, bool):
+            return {'error': 'user_status must be a boolean'}, 400
+
+            # Update user status based on the provided user_status
+        # Here, you can customize how you update the user status based on your requirements.
+        user.is_active = user_status
+        user.save()
+
+        return {'message': 'User status updated successfully'}, 200
 
 
-    # 用户退出登录
+# role查询
+role_fields = {
+    'id': fields.Integer,
+    'role_name': fields.String,
+    'create_time': fields.String,
+}
+all_role_fields = {
+    'code': fields.Integer,
+    'status': fields.Integer,
+    'msg': fields.String,
+    # user对象的字段进行匹配 对一个显示
+    # 'data': fields.Nested(user_fields)
+    # 下面查询是all 显示全部则加个fields.List
+    'data': fields.List(fields.Nested(role_fields))
+
+}
+
+
+class all_roles(Resource):
+    @jwt_required()
+    @marshal_with(all_role_fields)
+    def get(self):
+        roles = Role.query.all()
+        return {'code': 200,
+                'msg': 'ok',
+                'data': roles
+                }
+
+
+# 用户退出登录
 class user_logout(Resource):
     @jwt_required()
     def get(self):
@@ -258,6 +387,7 @@ class environment(Resource):
 class add_ticket(Resource):
     def __init__(self):
         self.attachment_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'attachment')
+
     @jwt_required()
     def post(self):
         # restful创建传入标准
@@ -316,23 +446,71 @@ class add_ticket(Resource):
             db.session.rollback()
             return jsonify(code=400, msg="发布工单失败")
 
-# 附件访问
+
+# 工单附件访问
 class AttachmentResource(Resource):
+
     def __init__(self):
         self.attachment_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'attachment')
+        if not os.path.exists(self.attachment_folder):
+            os.makedirs(self.attachment_folder)
+
     def get(self, filename):
         attachment_path = os.path.join(self.attachment_folder)
         print(attachment_path)
         return send_from_directory(attachment_path, filename)
 
 
+# 用户图片信息上传和查询 这些图片的路径不进入数据库
 
+class myupload(Resource):
+    @jwt_required()
+    def __init__(self):
+        self.upload_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'upload')
+        if not os.path.exists(self.upload_folder):
+            os.makedirs(self.upload_folder)
+    def post(self):
+        user_identity = get_jwt_identity()
+        user_id = user_identity['id']
+        if 'file' not in request.files:
+            return 'No file part in the request', 400
+
+        image = request.files['file']
+
+        if image.filename == '':
+            return 'No selected file', 400
+
+        if image:
+            filename = str(uuid.uuid4()) + '.' + image.filename.rsplit('.', 1)[1].lower()
+            print(filename)
+            image.save(os.path.join(self.upload_folder, filename))
+            try:
+                User.query.filter_by(id=user_id).update({"userPic": filename})
+                db.session.commit()
+                return {'image': filename, 'msg': 'iamge上传完成', "code": 200}
+            except Exception as e:
+                print(e)
+                db.session.rollback()  # 数据库回滚
+                return jsonify(code=400, msg="上传失败")
+
+# 浏览个人图片
+class myview(Resource):
+    def __init__(self):
+        self.upload_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'upload')
+        if not os.path.exists(self.upload_folder):
+            os.makedirs(self.upload_folder)
+
+    def get(self, filename):
+        upload_path = os.path.join(self.upload_folder)
+        print(upload_path)
+        return send_from_directory(upload_path, filename)
 
 # 修改，删除，查询工单
+
 class ticket(Resource):
     @jwt_required()
     def get(self, ticket_id):
-        ticket = Ticket.query.get(ticket_id)
+        ticket = Ticket.query.get
         if ticket:
             return {
                 'id': ticket.id,
@@ -341,7 +519,8 @@ class ticket(Resource):
                 'environment_id': ticket.environment_id,
                 'user_id': ticket.user_id,
                 'assignee_id': ticket.assignee_id,
-                'attachment_url': ticket.attachment_url
+                'attachment_url': ticket.attachment_url,
+                'ticket_status': ticket.status,
             }
         else:
             return {'msg': '工单没有找到'}, 404
@@ -351,10 +530,11 @@ class ticket(Resource):
         parser = reqparse.RequestParser()
         parser.add_argument('title', type=str, required=True, location='form')
         parser.add_argument('description', type=str, location='form')
+        parser.add_argument('status', type=str, location='form')
         parser.add_argument('environment_id', type=int, required=True, location='form')
         parser.add_argument('assignee_id', type=int, required=True, location='form')
         # parser.add_argument('attachment', type=FileStorage, location='files', required=False)
-        ticket = Ticket.query.get(ticket_id)
+        ticket = Ticket.query.get
         if not ticket:
             return {'msg': '工单没有找到'}, 404
         user_identity = get_jwt_identity()
@@ -362,6 +542,7 @@ class ticket(Resource):
         args = parser.parse_args()
         ticket.title = args['title']
         ticket.description = args['description']
+        ticket.status = args['status']
         # 查询输入的环境id号,修改的时候不可能知道名称要前端转下应该
         # environment = Environment.query.filter_by(name=args['environment_id']).first()
         # # 经办人id
@@ -374,14 +555,15 @@ class ticket(Resource):
             'id': ticket.id,
             'title': ticket.title,
             'description': ticket.description,
-            'environment': ticket.environment.name,
-            'assignee': ticket.assignee.name,
-            'user_id': user_id
+            'environment': ticket.environment.id,
+            'assignee': ticket.assignee.id,
+            'user_id': user_id,
+            'status': ticket.status
         }
 
     @jwt_required()
     def delete(self, ticket_id):
-        ticket = Ticket.query.get(ticket_id)
+        ticket = Ticket.query.get
         if not ticket:
             return {'msg': '工单没有找到'}, 404
         db.session.delete(ticket)
@@ -390,32 +572,46 @@ class ticket(Resource):
 
 
 # 查询所有用户
-user_fields = {
-    'id': fields.Integer,
-    'department': fields.String,
-    'username': fields.String,
-}
-all_users_fields = {
-    'code': fields.Integer,
-    'status': fields.Integer,
-    'msg': fields.String,
-    # user对象的字段进行匹配 对一个显示
-    # 'data': fields.Nested(user_fields)
-    # 下面查询是all 显示全部则加个fields.List
-    'data': fields.List(fields.Nested(user_fields))
-
-}
+# user_fields = {
+#     'id': fields.Integer,
+#     'department': fields.String,
+#     'username': fields.String,
+#     'role_id': fields.Integer,
+#     'create_time': fields.String,
+# }
+# all_users_fields = {
+#     'code': fields.Integer,
+#     'status': fields.Integer,
+#     'msg': fields.String,
+#     # user对象的字段进行匹配 对一个显示
+#     # 'data': fields.Nested(user_fields)
+#     # 下面查询是all 显示全部则加个fields.List
+#     'data': fields.List(fields.Nested(user_fields))
+#
+# }
 
 
 class all_users(Resource):
     @jwt_required()
-    @marshal_with(all_users_fields)
+    # @marshal_with(all_users_fields)
     def get(self):
         users = User.query.all()
-        return {'code': 200,
-                'msg': 'ok',
-                'data': users
-                }
+        user_list = []
+        for user in users:  # 这里直接遍历 users，而不是 users.items
+            user_info = {
+                'id': user.id,
+                'username': user.username,
+                'department': user.department,
+                'status': user.status,
+                'role_name': user.role.role_name if hasattr(user, 'role') else None,  # 添加对 user.role 的检查
+                'userPic': user.userPic if user.userPic else None,
+                'create_time': user.create_time.strftime('%Y-%m-%d %H:%M:%S'),
+            }
+            user_list.append(user_info)
+            # 对 user_list 进行降序排序，根据 create_time
+            sorted_users = sorted(user_list, key=lambda x: x['create_time'], reverse=True)
+            #print(sorted_users)
+        return {'code': 200, 'msg': 'ok', 'data': sorted_users}
 
 
 # 查询环境标签
@@ -504,6 +700,7 @@ class all_tickets(Resource):
 
         return {'code': 200, 'msg': 'ok', 'count': total_count, 'page': page, "per_page": per_page, 'data': sorted_tickets}
 
+
 # 查询登录账号的工单
 class user_tickets(Resource):
     @jwt_required()
@@ -550,6 +747,7 @@ class user_tickets(Resource):
 
         return {'code': 200, 'msg': 'ok', 'count': total_count, 'page': page, "per_page": per_page, 'data': ticket_list}
 
+
 class ticket_processing(Resource):
     @jwt_required()
     def get(self):
@@ -590,14 +788,14 @@ class ticket_processing(Resource):
                 'reporter_id': ticket.user.id,
                 'environment': ticket.environment.name if ticket.environment else None,
                 'assignee': ticket.assignee.name if ticket.assignee else None,
-                'comment': [],
+                'comments': [],
             }
             for feedback in ticket.feedbacks:
                 comment_info = {
                     'comment_id': feedback.id,
                     'comment': feedback.comment,
                     'create_time': feedback.create_time.strftime('%Y-%m-%d %H:%M:%S'),
-                    'attachment_url': feedback.attachment_url
+                    # 'attachment_url': feedback.attachment_url
                 }
                 ticket_info['comments'].append(comment_info)
             ticket_list.append(ticket_info)
@@ -605,48 +803,43 @@ class ticket_processing(Resource):
         return {'code': 200, 'msg': 'ok', 'count': total_count, 'page': page, "per_page": per_page, 'data': ticket_list}
 
 
-# 进行工单创建
+# 新增反馈信息
 class ticket_processing_feedbacks(Resource):
+    def __init__(self):
+        self.attachment_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'attachment')
+
     @jwt_required()
     def post(self):
-        page = request.args.get('pagenum', default=1, type=int)
-        per_page = request.args.get('pagesize', default=10, type=int)
-        # 获取登录者的id
-        user_identity = get_jwt_identity()
-        user_id = user_identity['id']
-        # 对登录用户和经办人id进行匹配
-        condition = Feedback.assignee_id == user_id
-
-        feedback = Feedback.query.filter(condition).order_by(Feedback.create_time.desc()).paginate(page=page, per_page=per_page, error_out=False)
-
-        # 分页查询
-        total_count = feedback.total
-        feedback_list = []
-
-        for item in feedback.items:
-            ticket_info = {
-                'ticket_id': item.ticket.id,
-                'title': item.ticket.title,
-                'description': item.ticket.description,
-                'status': item.ticket.status,
-                'ticket_create_time': item.ticket.create_time.strftime('%Y-%m-%d %H:%M:%S'),
-                'ticket_attachment_url': item.ticket.attachment_url,
-                'reporter': item.ticket.user.username,
-                'reporter_id': item.ticket.user.id,
-                'ticket_environment': item.ticket.environment.name if item.ticket.environment else None,
-                'assignee': item.ticket.assignee.name if item.ticket.assignee else None,
-                'feedback_id': item.id,
-                'comment': item.comment,
-                'feedback_create_time': item.create_time.strftime('%Y-%m-%d %H:%M:%S'),
-                'feedback_update_time': item.update_time.strftime('%Y-%m-%d %H:%M:%S'),
-                'feedback_attachment_url': item.attachment_url
-            }
-            feedback_list.append(ticket_info)
-
-        return {'code': 200, 'msg': 'ok', 'count': total_count, 'page': page, "per_page": per_page, 'data': feedback_list}
-
-
-
+        # restful创建传入标准
+        parser = reqparse.RequestParser()
+        parser.add_argument('comment', type=str, required=True, location='form')
+        parser.add_argument('ticket_id', type=int, required=True, location='form')
+        parser.add_argument('ticket_status', type=str, required=True, location='form')
+        # parser.add_argument('attachment', type=FileStorage, location='files', required=False, action='append')
+        args = parser.parse_args()
+        # user_identity = get_jwt_identity()
+        # user_id = user_identity['id']
+        try:
+            feedback = Feedback(comment=args['comment'], ticket_id=args['ticket_id'])
+            db.session.add(feedback)
+            db.session.commit()
+            # 通过feedback的ticket_id找到对应的Ticket对象并更新其status字段
+            ticket = Ticket.query.get
+            if ticket:
+                ticket.status = args['ticket_status']
+                db.session.commit()
+                return {
+                           'feedback_id': feedback.id,
+                           'ticket_id': ticket.id,
+                           'status': ticket.status,
+                           'comment': feedback.comment
+                       }, 201
+            else:
+                return jsonify(code=404, msg="未找到对应的工单"), 404
+        except Exception as e:
+            print(e)
+            db.session.rollback()
+            return jsonify(code=400, msg="工单回复失败")
 
 
 class all_feedbacks(Resource):

@@ -4,7 +4,9 @@ from flask import Flask
 # from .apis import blue
 from .exts import init_exts
 # 加入路由
+from .pushlist_urls import *
 from .urls import *
+# 时间
 import datetime
 import redis
 
@@ -30,7 +32,6 @@ def create_app():
     app.config['SQLALCHEMY_DATABASE_URI'] = DB_URI
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-
     # # 配置redis
     # app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     # app.config["SESSION_TYPE"] = "redis"  # 设置那个数据库
@@ -40,6 +41,10 @@ def create_app():
     # app.config["SESSION_REDIS"] = redis.Redis(host="192.168.0.123", port=6379, password=123456, db=2)  # 连接数据库
     # app.config["SESSION_KEY_PREFIX"] = "session:"  # 设置你在session中的session头添加的东西
     # 初始化插件
-    init_exts(app=app)
 
+    #
+    init_exts(app=app)
     return app
+
+
+

@@ -16,3 +16,4 @@ headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {token}
 response = requests.post('http://127.0.0.1:9002/environment/', headers=headers, json=data3)
 print(response.status_code)
 print(response.json())
+print('----')
