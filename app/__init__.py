@@ -3,7 +3,6 @@
 from flask import Flask
 # from .apis import blue
 from .exts import init_exts
-# 加入路由
 from .pushlist_urls import *
 from .urls import *
 # 时间
@@ -41,9 +40,15 @@ def create_app():
     # app.config["SESSION_REDIS"] = redis.Redis(host="192.168.0.123", port=6379, password=123456, db=2)  # 连接数据库
     # app.config["SESSION_KEY_PREFIX"] = "session:"  # 设置你在session中的session头添加的东西
     # 初始化插件
-
-    #
+    # jenkins登录
+    app.config['JENKINS_MASTER'] = "http://192.168.0.152:8080"
+    app.config['JENKINS_LOGIN_USER'] = 'admin'
+    app.config['JENKINS_LOGIN_PASSWD'] = 'bry@NJ12@x'
+    #jumpserver
+    app.config['key_id'] = 'af14e012-186e-4528-8298-e1505552682b'
+    app.config['secret'] = '7cafb5cb-fa4f-4e16-b482-cde9f608a526'
     init_exts(app=app)
+
     return app
 
 

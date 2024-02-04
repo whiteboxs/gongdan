@@ -199,11 +199,18 @@ class Feedback(db.Model):
 class K8s_job(db.Model):
     __tablename__ = 'k8s_job'
     id = db.Column(db.Integer, primary_key=True)
-    job_name = db.Column(db.String(255), nullable=False)
+    job_name = db.Column(db.String(255), nullable=False, unique=True)
+    test_ip = db.Column(db.String(100), nullable=False)
+    dev_ip = db.Column(db.String(100), nullable=False)
+    git_address = db.Column(db.String(255), nullable=False)
     job_path = db.Column(db.String(512), default="/data/jenkins/slave/workspace")
     job_info = db.Column(db.Text)
     create_time = db.Column(db.DateTime, default=datetime.now)
     update_time = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    lastgray_build_id = db.Column(db.Integer)
+    lastgray_build_time = db.Column(db.DateTime)
+    lastprod_build_id = db.Column(db.Integer)
+    lastprod_build_time = db.Column(db.DateTime)
     #  多对一
     job_build_ids = db.relationship('K8s_build_id', backref='k8s_job')
 

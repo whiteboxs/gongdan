@@ -8,7 +8,7 @@ from .models import *
 # from flask import Blueprint
 from .utils.tools import user_login_required, admin_login_required
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, create_refresh_token
-from sqlalchemy import or_, and_
+from sqlalchemy import or_
 from werkzeug.datastructures import FileStorage
 import uuid
 
@@ -150,21 +150,21 @@ class user_register(Resource):
             return jsonify(code=400, msg="用户注册失败")
 
 
-class admin_login(Resource):
-    def get(self):
-        req_data = request.get_json()
-        username = req_data.get("username")
-        password = req_data.get("password")
-        if not all([username, password]):
-            return jsonify(code=400, msg="登录参数不全")
-        # 查找管理源账号    验证密码
-        admin = Admin.query.filter(Admin.username == username).first()
-        if admin is None or password != admin.password:
-            return jsonify(code=400, msg="管理员或者密码错误,或者没有这个账号")
-        # 保存session
-        session["admin_name"] = username
-        session["admin_id"] = admin.id
-        return jsonify(code=200, msg="登录成功")
+# class admin_login(Resource):
+#     def get(self):
+#         req_data = request.get_json()
+#         username = req_data.get("username")
+#         password = req_data.get("password")
+#         if not all([username, password]):
+#             return jsonify(code=400, msg="登录参数不全")
+#         # 查找管理源账号    验证密码
+#         admin = Admin.query.filter(Admin.username == username).first()
+#         if admin is None or password != admin.password:
+#             return jsonify(code=400, msg="管理员或者密码错误,或者没有这个账号")
+#         # 保存session
+#         session["admin_name"] = username
+#         session["admin_id"] = admin.id
+#         return jsonify(code=200, msg="登录成功")
 
 
 class add_user(Resource):
@@ -208,13 +208,13 @@ class user_login(Resource):
         # 查找用户账号    验证密码
         user = User.query.filter(User.username == username).first()
         if user is None or password != user.password:
-            return jsonify(code=400, msg="管理员或者错误")
+            return jsonify(code=400, msg="用户密码错误")
         # 保存session
         # 认证成功，创建JWT令牌
         token = create_access_token(identity={"user": user.username, "id": user.id})
         # session["user_name"] = username
         # session["user_id"] = user.id
-        return jsonify(code=200, username=username, token=token, user_id=user.id, msg="登录成功")
+        return jsonify(code=200, username=username, token=token, user_id=user.id, role_id=user.role_id, msg="登录成功")
 
 
 # 用户添加，查询，修改，删除
@@ -222,6 +222,7 @@ user_fields = {
     'id': fields.Integer,
     'department': fields.String,
     'username': fields.String,
+    'role_id': fields.Integer,
     'create_time': fields.DateTime,
     'tickets': fields.List(fields.Nested({
         'id': fields.Integer,
@@ -257,11 +258,10 @@ class userinfo(Resource):
         parser.add_argument('role_id', type=int, location='form')
         parser.add_argument('password', type=str, location='form')
         args = parser.parse_args()
-        # 将 user_status 转换为布尔值
-
         if args['user_status'] is not None:
             print(args['user_status'])
             try:
+                # 将 user_status 转换为布尔值
                 user_status = args['user_status'].lower() == 'true'  # 将字符串转换为布尔值
                 print(user_status)
                 # 根据user_id查询并更新user_status
@@ -542,7 +542,7 @@ class ticket(Resource):
         args = parser.parse_args()
         ticket.title = args['title']
         ticket.description = args['description']
-        ticket.status = args['status']
+        # ticket.status = args['status']
         # 查询输入的环境id号,修改的时候不可能知道名称要前端转下应该
         # environment = Environment.query.filter_by(name=args['environment_id']).first()
         # # 经办人id

@@ -65,9 +65,6 @@ api.add_resource(myupload, '/my/upload')
 api.add_resource(myview, '/my/view/<string:filename>')
 
 
-# jenkins
-
-# api.add_resource(add_k8s_job, '/api/k8s_job')
 
 
 
