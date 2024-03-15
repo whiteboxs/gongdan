@@ -4,13 +4,14 @@ from flask import jsonify, request, session, send_from_directory
 from flask_restful import Resource, fields, marshal_with, reqparse
 from werkzeug.utils import secure_filename
 import os
-from .models import *
+from ..models import *
 # from flask import Blueprint
-from .utils.tools import user_login_required, admin_login_required
-from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, create_refresh_token
+from ..utils.tools import user_login_required, admin_login_required
+from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, create_refresh_token, get_jwt
 from sqlalchemy import or_
 from werkzeug.datastructures import FileStorage
 import uuid
+from collections import defaultdict
 
 # token头 Bearer
 """
@@ -47,77 +48,124 @@ import uuid
 # 类视图 cbv class based view 这里写的都是class类视图 这里和前端后集成里的view差不多
 # 类视图不用加装饰器，单独写个路由文件配合使用名称为urls.py
 
-#
-# class hello(Resource):
-#     def get(self):
-#         session['username'] = 'John'
-#         return 'Session data is stored in Redis.'
-#
-#     def post(self):
-#         return 'post request souer'
+# 菜单权限
+class all_menus(Resource):
+    @jwt_required()
+    def get(self):
+        menus = Menu.query.all()
+
+        menu_list = []
+        for menu in menus:
+            menu.info = {
+                'id': menu.id,
+                'title': menu.menu_name,
+                'icon': menu.icon,
+                'path': menu.menu_path if menu.menu_path else None,
+                'menu_type': menu.menu_type,
+                'parentid': menu.parentId,
+                'parentname': menu.parentName,
+                'permiss': menu.permiss,
+                'route_component': menu.route_component,
+                'create_time': menu.create_time.strftime('%Y-%m-%d %H:%M:%S'),
+            }
+            menu_list.append(menu.info)
+        return {'code': 200, 'msg': 'ok', 'data': menu_list}
 
 
-# flask-restful 字段格式化
-# 字段格式化：返回给前端的数据格式
-# 下面的字段里对应的是要返回的字段和类型如果注释掉data行，那类里面有 最终也不显示，
-# 类里没有但是字典里有则显示 data2是给data修改名称 然后可以注释掉data data2里显示的是data的数据
-# ret_fields = {
-#     'data': fields.String,
-#     'msg': fields.String,
-#     'code': fields.Integer,
-#     'like': fields.String(default='foot'),
-#     'data2': fields.String(attribute='data')
-# }
-#
-#
-# class UserResource(Resource):
-#     @marshal_with(ret_fields)
-#     def get(self):
-#         return {'code': '200',
-#                 'msg': 'ok',
-#                 'data': 'test'}
 
 
-# usertest2_fields = {
-#     'id': fields.Integer,
-#     'department': fields.String,
-#     'username': fields.String,
-#     'password': fields.Integer
-# }
-# ret_fields_mysql = {
-#     'status': fields.Integer,
-#     'msg': fields.String,
-#     # user对象的字段进行匹配 对一个显示
-#     # 'data': fields.Nested(user_fields)
-#     # 下面查询是all 显示全部则加个fields.List
-#     'data': fields.List(fields.Nested(usertest2_fields))
-
-# }
+# 读取菜单权限
+class menu_permiss(Resource):
+    @jwt_required()
+    def get(self, role_id):
+        menu_permiss = Roletomenu.query.filter_by(role_id=role_id).all()
+        menu_permiss_list = [permission.menu_id for permission in menu_permiss]
+        return {'access': menu_permiss_list, 'msg': 'ok', 'role_id': role_id}
 
 
-# class MysqlResource(Resource):
-#     @marshal_with(ret_fields_mysql)
-#     def get(self):
-#         user = User.query.all()
-#         return {'status': '1',
-#                 'msg': 'ok',
-#                 'data': user
-#                 }
+    def put(self, role_id):
+        # 查所有角色当前返回的menu信息
+        if Role.query.filter_by(id=role_id).first() is not None:
+            role = Role.query.get(role_id)
+        else:
+            return jsonify({"code": 400, "msg": "角色不存在"})
+        menu_ids = request.json.get('access')  # 假设前端传入的菜单id列表存放在一个名为 'menu_ids' 的 JSON 字段
+        # 查询列表里在不在库里，如果在则过滤出来
+        menu = Menu.query.filter(Menu.id.in_(menu_ids)).all()
+        # 识别出来后 赋值给roles.menus菜单，因为menus是中间表入口，所以会自动在中间表中添加关系
+        role.menus = menu
+        try:
+            db.session.add(role)
+            db.session.commit()
+            menu_permiss = Roletomenu.query.filter_by(role_id=role_id).all()
+            menu_permiss_list = [permission.menu_id for permission in menu_permiss]
+            return {'access': menu_permiss_list, 'msg': '更新权限成功', 'role_id': role_id}
+        except Exception as e:
+            print(e)
+            db.session.rollback()
+            return jsonify(code=400, msg="更新权限失败")
 
 
-# --------------前端传入的参数解析
-# parser = reqparse.RequestParser()
-# parser.add_argument('username', type=str)
-# parser.add_argument('password', type=int)
-# parser.add_argument('department', type=str)
+# 添加菜单
+class add_menu(Resource):
+    @jwt_required()
+    def post(self):
+        # restful创建传入标准
+        parser = reqparse.RequestParser()
+        parser.add_argument('menu_name', type=str, required=True, location='form')
+        parser.add_argument('menu_path', type=str, location='form')
+        parser.add_argument('menu_type', type=str, required=True, location='form')
+        parser.add_argument('icon', type=str, required=True, location='form')
+        parser.add_argument('parentid', type=int, location='form')
+        parser.add_argument('parentname', type=str, location='form')
+        parser.add_argument('permiss', type=int, location='form')
+        parser.add_argument('route_component', type=str, location='form')
+        args = parser.parse_args()
+        if Menu.query.filter_by(menu_name=args['menu_name']).first() is not None:
+            return jsonify({"code": 400, "msg": "菜单名已存在"})
+        try:
+            menu = Menu(menu_name=args['menu_name'], menu_path=args['menu_path'], menu_type=args['menu_type'], icon=args['icon'], parentId=args['parentid'], parentName=args['parentname'], permiss=args['permiss'], route_component=args['route_component'])
+            db.session.add(menu)
+            db.session.commit()
+            # 更新工单的附件名和链接字段
+            return {
+                       'msg': '创建菜单完成',
+                       'code': 201,
+                       'id': menu.id,
+                       'menu_name': menu.menu_name,
+                       'menu_path': menu.menu_path,
+                       'menu_type': menu.menu_type,
+                       'icon': menu.icon,
+                       'parentid': menu.parentId,
+                       'parentname': menu.parentName,
+                       'permiss': menu.permiss,
+                       'route_component': menu.route_component,
+                   }, 201
+        except Exception as e:
+            print(e)
+            db.session.rollback()
+            return jsonify(code=400, msg="创建菜单失败")
+
+#测试
+class menu(Resource):
+    @jwt_required()
+    def post(self, role_id):
+        role = Role.query.get(role_id)
+        print("---", role)
+        # 查所有角色当前返回的menu信息
+        menu = Menu.query.all()
+        # 显示课程表名字
+        print(menu)
+        for i in menu:
+            print(i.menu_name)
+        # 这里角色的菜单导入到中间表 id1的学生有几门课
+        role.menus = menu
+        db.session.add(role)
+        db.session.commit()
+        return jsonify({'message': 'ok'})
 
 
-# def get(self):
-#     args = parser.parse_args()
-#     username = args.get('username')
-#     password = args.get('password')
-#     department = args.get('department')
-#     return jsonify({'username': username, 'password': password, 'department': department})
+
 
 
 class admin_login(Resource):
@@ -139,7 +187,10 @@ class user_register(Resource):
         username = req_data.get("username")
         password = req_data.get("password")
         department = req_data.get("department")
-        user = User(username=username, password=password, department=department)
+        if User.query.filter_by(username=username).first() is not None:
+            return jsonify({"code": 400, "msg": "账号已存在"})
+        user = User(username=username, department=department)
+        user.hash_password(password)
         try:
             db.session.add(user)
             db.session.commit()
@@ -177,8 +228,11 @@ class add_user(Resource):
         parser.add_argument('department', type=str, required=True, location='form')
         parser.add_argument('role_id', type=int, required=True, location='form')
         args = parser.parse_args()
+        if User.query.filter_by(username=args['username']).first() is not None:
+            return jsonify({"code": 400, "msg": "账号已存在"})
         try:
-            user = User(username=args['username'], password=args['password'], department=args['department'], role_id=args['role_id'])
+            user = User(username=args['username'], department=args['department'], role_id=args['role_id'])
+            user.hash_password(args['password'])
             db.session.add(user)
             db.session.commit()
             # 更新工单的附件名和链接字段
@@ -205,58 +259,58 @@ class user_login(Resource):
         password = req_data.get("password")
         if not all([username, password]):
             return jsonify(code=200, msg="用户登录参数不全")
-        # 查找用户账号    验证密码
-        user = User.query.filter(User.username == username).first()
-        if user is None or password != user.password:
-            return jsonify(code=400, msg="用户密码错误")
-        # 保存session
-        # 认证成功，创建JWT令牌
-        token = create_access_token(identity={"user": user.username, "id": user.id})
-        # session["user_name"] = username
-        # session["user_id"] = user.id
-        return jsonify(code=200, username=username, token=token, user_id=user.id, role_id=user.role_id, msg="登录成功")
+        if User.query.filter_by(username=username).filter_by(status=True).first() is not None:
+            # 查找用户账号    验证密码
+            user = User.query.filter(User.username == username).first()
+            # 密码效验
+            if user.verify_password(password) is True:
+                # 保存session
+                # 认证成功，创建JWT令牌
+                access_token = create_access_token(identity={"user": user.username, "id": user.id})
+                refresh_token = create_refresh_token(identity={"user": user.username, "id": user.id})
+                # session["user_name"] = username
+                # session["user_id"] = user.id
+                return jsonify(code=200, username=username, expires_in=60, access_token=access_token, refresh_token=refresh_token, user_id=user.id, role_id=user.role_id, role_name=user.role.role_name, update_time=user.update_time, msg="登录成功")
+            else:
+                return jsonify(code=400, msg="用户密码错误")
+        else:
+            return jsonify(code=400, msg="账号已禁用")
+
+
+# token 刷新
+class refresh_token(Resource):
+    @jwt_required(refresh=True)  # 刷新token装饰器
+    def post(self):
+        identity = get_jwt_identity()
+        access_token = create_access_token(identity=identity)
+        return jsonify(access_token=access_token, msg="ok")
 
 
 # 用户添加，查询，修改，删除
-user_fields = {
-    'id': fields.Integer,
-    'department': fields.String,
-    'username': fields.String,
-    'role_id': fields.Integer,
-    'create_time': fields.DateTime,
-    'tickets': fields.List(fields.Nested({
-        'id': fields.Integer,
-        'title': fields.String,
-        'description': fields.String,
-        'environment_id': fields.Integer,
-        'user_id': fields.Integer,
-        'assignee_id': fields.Integer,
-        'status': fields.String,
-        'attachment_url': fields.String,
-    })),
-}
-
 
 class userinfo(Resource):
     @jwt_required()
-    @marshal_with(user_fields)
     def get(self, user_id):
-        user = User.query.get
-        return user
+        user = User.query.get(user_id)
+        print(user)
+        if user:
+            return {'code': 200, 'msg': "ok",
+                    'id': user.id,
+                    'username': user.username,
+                    'department': user.department,
+                    'status': user.status,
+                    'role_id': user.role_id,
+                    'role_name': user.role.role_name,
+                    }
+        else:
+            return jsonify(code=404, msg="user不存在")
 
     def put(self, user_id):
-        # user = User.query.get(user_id)
-        # user_identity = get_jwt_identity()
-        # user_id = user_identity['id']
-        # username = user_identity['user']
-        # print(user_id, username)
-        # 传入标签 获取sesion看有没有登录
         parser = reqparse.RequestParser()
         parser.add_argument('username', type=str, location='form')
         parser.add_argument('department', type=str, location='form')
         parser.add_argument('user_status', type=str, location='args')
         parser.add_argument('role_id', type=int, location='form')
-        parser.add_argument('password', type=str, location='form')
         args = parser.parse_args()
         if args['user_status'] is not None:
             print(args['user_status'])
@@ -274,15 +328,21 @@ class userinfo(Resource):
                 return jsonify(code=400, msg="修改用户状态失败")
         elif args['username'] is not None:
             try:
-                print(args['username'], args['department'],args['role_id'],args['password'])
-                user = User.query.get
+                user = User.query.filter_by(id=user_id).first()
+                if user:
+                    if user.username != args['username']:
+                        existing_user = User.query.filter_by(username=args['username']).first()
+                        if existing_user is None:
+                            user.username = args['username']
+                        else:
+                            return jsonify(code=400, msg="用户名已经存在")
                 user.username = args['username']
                 user.department = args['department']
                 user.role_id = args['role_id']
-                user.password = args['password']
+                # user.password = args['password']
                 # User.query.filter_by(id=user_id).update({"username": args['username']}, {"department": args['department']}, {"role_id": args['role_id']}, {"password": args['password']})  # 根据user_id查询并更新username
                 db.session.commit()
-                return jsonify(code=200, username=args['username'], department=args['department'], role_id=args['role_id'], password=args['password'], msg="修改成功")
+                return jsonify(code=200, username=args['username'], department=args['department'], role_id=args['role_id'], msg="修改成功")
             except Exception as e:
                 print(e)
                 db.session.rollback()  # 数据库回滚
@@ -291,7 +351,7 @@ class userinfo(Resource):
             return jsonify(code=400, msg="参数不完整，没有此账号")
 
     def delete(self, user_id):
-        user = User.query.get
+        user = User.query.get(user_id)
 
         if not user:
             return {'msg': '用户没有找到'}, 404
@@ -318,6 +378,36 @@ class userstatus(Resource):
         user.save()
 
         return {'message': 'User status updated successfully'}, 200
+
+
+
+# 添加 job
+class add_role(Resource):
+    @jwt_required()
+    def post(self):
+        # restful创建传入标准
+        parser = reqparse.RequestParser()
+        parser.add_argument('role_name', type=str, required=True, location='form')
+        args = parser.parse_args()
+        # 检查 job_name 是否已存在
+        existing_role = Role.query.filter_by(role_name=args['role_name']).first()
+        if existing_role:
+            return jsonify(code=400, msg="创建的角色名已经存在")
+        try:
+            role = Role(role_name=args['role_name'])
+            db.session.add(role)
+            db.session.commit()
+            return {
+                       'msg': '创建角色完成',
+                       'id': role.id,
+                       'role_name': role.role_name,
+                       'create_time': role.create_time.strftime('%Y-%m-%d %H:%M:%S'),
+                       'update_time': role.update_time.strftime('%Y-%m-%d %H:%M:%S')
+                   }, 201
+        except Exception as e:
+            print(e)
+            db.session.rollback()
+            return jsonify(code=400, msg="创建角色失败")
 
 
 # role查询
@@ -347,6 +437,75 @@ class all_roles(Resource):
                 'msg': 'ok',
                 'data': roles
                 }
+
+# 查询，删除单个角色
+class role(Resource):
+    @jwt_required()
+    def get(self, role_id):
+        role = Role.query.get(role_id)
+        if role:
+            if role_id == 1:  # 如果 role_id 为 1，则返回所有菜单
+                all_menus = Menu.query.all()
+                menulist = []
+                for menu in all_menus:
+                    menu_data = {
+                        'id': menu.id,
+                        'title': menu.menu_name,
+                        'icon': menu.icon,
+                        'path': menu.menu_path,
+                        'menu_type': menu.menu_type,
+                        'parentid': menu.parentId,
+                        'parentname': menu.parentName,
+                        'permiss': menu.permiss,
+                        'route_component': menu.route_component,
+                        'create_time': menu.create_time.strftime('%Y-%m-%d %H:%M:%S'),
+                    }
+                    menulist.append(menu_data)
+                return {
+                    'msg': 'ok',
+                    'menus': menulist,
+                }
+            else:
+                userlist = []
+                for user in role.users:
+                    user_data = {
+                        'username': user.username,
+                        'id': user.id
+                    }
+                    userlist.append(user_data)
+                menulist = []
+                for menu in role.menus:
+                    menu_data = {
+                        'id': menu.id,
+                        'title': menu.menu_name,
+                        'icon': menu.icon,
+                        'path': menu.menu_path,
+                        'menu_type': menu.menu_type,
+                        'parentid': menu.parentId,
+                        'parentname': menu.parentName,
+                        'permiss': menu.permiss,
+                        'route_component': menu.route_component,
+                        'create_time': menu.create_time.strftime('%Y-%m-%d %H:%M:%S'),
+                    }
+                    menulist.append(menu_data)
+                return {
+                    'msg': 'ok',
+                    'id': role.id,
+                    'role_name': role.role_name,
+                    'users': userlist,
+                    'menus': menulist,
+                }
+        else:
+            return {'msg': '角色没有找到'}, 404
+
+    @jwt_required()
+    def delete(self, role_id):
+        role = Role.query.get(role_id)
+        if not role:
+            return {'msg': '角色没有找到', 'code': '404'}, 404
+        db.session.delete(role)
+        db.session.commit()
+        return {'msg': '角色已删除', 'code': '204'}, 204
 
 
 # 用户退出登录
@@ -386,7 +545,7 @@ class environment(Resource):
 
 class add_ticket(Resource):
     def __init__(self):
-        self.attachment_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'attachment')
+        self.attachment_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../attachment')
 
     @jwt_required()
     def post(self):
@@ -451,7 +610,7 @@ class add_ticket(Resource):
 class AttachmentResource(Resource):
 
     def __init__(self):
-        self.attachment_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'attachment')
+        self.attachment_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../attachment')
         if not os.path.exists(self.attachment_folder):
             os.makedirs(self.attachment_folder)
 
@@ -466,12 +625,10 @@ class AttachmentResource(Resource):
 class myupload(Resource):
     @jwt_required()
     def __init__(self):
-        self.upload_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'upload')
+        self.upload_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../upload')
         if not os.path.exists(self.upload_folder):
             os.makedirs(self.upload_folder)
-    def post(self):
-        user_identity = get_jwt_identity()
-        user_id = user_identity['id']
+    def post(self,user_id):
         if 'file' not in request.files:
             return 'No file part in the request', 400
 
@@ -482,7 +639,7 @@ class myupload(Resource):
 
         if image:
             filename = str(uuid.uuid4()) + '.' + image.filename.rsplit('.', 1)[1].lower()
-            print(filename)
+            print(111, filename)
             image.save(os.path.join(self.upload_folder, filename))
             try:
                 User.query.filter_by(id=user_id).update({"userPic": filename})
@@ -493,24 +650,26 @@ class myupload(Resource):
                 db.session.rollback()  # 数据库回滚
                 return jsonify(code=400, msg="上传失败")
 
+
 # 浏览个人图片
 class myview(Resource):
     def __init__(self):
-        self.upload_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'upload')
+        self.upload_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../upload')
         if not os.path.exists(self.upload_folder):
             os.makedirs(self.upload_folder)
 
     def get(self, filename):
         upload_path = os.path.join(self.upload_folder)
-        print(upload_path)
+        print(222, upload_path)
         return send_from_directory(upload_path, filename)
+
 
 # 修改，删除，查询工单
 
 class ticket(Resource):
     @jwt_required()
     def get(self, ticket_id):
-        ticket = Ticket.query.get
+        ticket = Ticket.query.get(ticket_id)
         if ticket:
             return {
                 'id': ticket.id,
@@ -526,7 +685,7 @@ class ticket(Resource):
             return {'msg': '工单没有找到'}, 404
 
     @jwt_required()
-    def put(self, ticket_id):
+    def put(self):
         parser = reqparse.RequestParser()
         parser.add_argument('title', type=str, required=True, location='form')
         parser.add_argument('description', type=str, location='form')
@@ -562,7 +721,7 @@ class ticket(Resource):
         }
 
     @jwt_required()
-    def delete(self, ticket_id):
+    def delete(self):
         ticket = Ticket.query.get
         if not ticket:
             return {'msg': '工单没有找到'}, 404
@@ -572,28 +731,10 @@ class ticket(Resource):
 
 
 # 查询所有用户
-# user_fields = {
-#     'id': fields.Integer,
-#     'department': fields.String,
-#     'username': fields.String,
-#     'role_id': fields.Integer,
-#     'create_time': fields.String,
-# }
-# all_users_fields = {
-#     'code': fields.Integer,
-#     'status': fields.Integer,
-#     'msg': fields.String,
-#     # user对象的字段进行匹配 对一个显示
-#     # 'data': fields.Nested(user_fields)
-#     # 下面查询是all 显示全部则加个fields.List
-#     'data': fields.List(fields.Nested(user_fields))
-#
-# }
 
 
 class all_users(Resource):
     @jwt_required()
-    # @marshal_with(all_users_fields)
     def get(self):
         users = User.query.all()
         user_list = []
@@ -610,7 +751,7 @@ class all_users(Resource):
             user_list.append(user_info)
             # 对 user_list 进行降序排序，根据 create_time
             sorted_users = sorted(user_list, key=lambda x: x['create_time'], reverse=True)
-            #print(sorted_users)
+            # print(sorted_users)
         return {'code': 200, 'msg': 'ok', 'data': sorted_users}
 
 
@@ -806,7 +947,7 @@ class ticket_processing(Resource):
 # 新增反馈信息
 class ticket_processing_feedbacks(Resource):
     def __init__(self):
-        self.attachment_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'attachment')
+        self.attachment_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../attachment')
 
     @jwt_required()
     def post(self):

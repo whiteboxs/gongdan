@@ -1,13 +1,13 @@
 # 初始化文件 创建flash应用
 # url_for, request, redirect, render_template
 from flask import Flask
-# from .apis import blue
+# from ..apis.system_api import blue
 from .exts import init_exts
-from .pushlist_urls import *
-from .urls import *
+# 导入urls这里测试是暗的也有作用，不添加则访问接口报错
+from . import urls
+
 # 时间
 import datetime
-import redis
 
 
 def create_app():
@@ -22,8 +22,10 @@ def create_app():
     app.config.update(RESTFUL_JSON=dict(ensure_ascii=False))
     # tocker 秘钥
     app.config['JWT_SECRET_KEY'] = 'ruobhuyoqurogq^!$^&*@#'
-    app.config['JWT_ACCESS_TOKEN_EXPIRES'] = datetime.timedelta(hours=2)  # 设置访问令牌过期时间为1小时
-    app.config['JWT_REFRESH_TOKEN_EXPIRES'] = datetime.timedelta(days=7)  # 设置刷新令牌过期时间为30天
+    app.config['JWT_ACCESS_TOKEN_EXPIRES'] = datetime.timedelta(hours=1)  # 设置访问令牌过期时间为1小时
+    app.config['JWT_REFRESH_TOKEN_EXPIRES'] = datetime.timedelta(days=1)  # 设置刷新令牌过期时间为30天
+    #app.config['JWT_ACCESS_TOKEN_EXPIRES'] = datetime.timedelta(minutes=1)
+    #app.config['JWT_REFRESH_TOKEN_EXPIRES'] = datetime.timedelta(minutes=10)
     # 配置数据库
     # DB_URI = 'sqlite:///sqlite3.db'
     DB_URI = 'mysql+pymysql://test:123456@192.168.86.123:3306/restful'

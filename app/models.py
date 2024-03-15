@@ -1,6 +1,7 @@
 # 模型 和数据库有关系
 from .exts import db
 from datetime import datetime
+from passlib.hash import sha256_crypt
 
 
 # from wtforms.validators import DataRequired
@@ -32,6 +33,64 @@ from datetime import datetime
 #     # tags = db.relationship("Tag", backref="admin")  # 1对多对应外键 在在tags.admin.username用户名
 
 
+# class Menu_permission(db.Model):
+#     # 表名
+#     __tablename__ = "menu_permission"
+#     id = db.Column(db.Integer, primary_key=True)  # 主键没有提升要硬输入
+#     menuname = db.Column(db.String(32), nullable=False, unique=True)  # 用户名 nullable 是否可以为空
+#     menupath = db.Column(db.String(32), nullable=False, unique=True)  # 用户名 nullable 是否可以为空
+#     menttype = db.Column(db.Enum("menu", "button"), nullable=False, default="menu")
+#     create_time = db.Column(db.DateTime, index=True, default=datetime.now)
+#     # user_id = db.Column(db.Integer, db.ForeignKey("user.id"))  # 外键 放在多的类里 多对一
+#     # admin_id = db.Column(db.Integer, db.ForeignKey("admin.id"))
+#     # 一对多，一个role有多个菜单，外键
+#     role_id = db.Column(db.Integer, db.ForeignKey('role.id'))
+
+#
+class Menu(db.Model):
+    # 表名
+    __tablename__ = "menu"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)  # 主键没有提升要硬输入
+    menu_name = db.Column(db.String(32), nullable=False, unique=True)  # 用户名 nullable 是否可以为空
+    icon = db.Column(db.String(16), nullable=False)
+    menu_path = db.Column(db.String(32), nullable=True, unique=True)  # 用户名 nullable 是否可以为空
+    menu_type = db.Column(db.Enum("directory", "menu", "button"), nullable=False)
+    parentId = db.Column(db.Integer)
+    permiss = db.Column(db.Integer, unique=True, autoincrement=True)
+    parentName = db.Column(db.String(32))
+    route_component = db.Column(db.String(32))
+    create_time = db.Column(db.DateTime, index=True, default=datetime.now)
+    # 有多对多来维护3表关系了
+
+
+
+
+
+ # 角色和菜单中间表
+class Roletomenu(db.Model):
+    # 表名
+    __tablename__ = "role_to_menu"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    menu_id = db.Column(db.Integer, db.ForeignKey("menu.id"))  # 多对多的关系表，加入要关系的2个外键id
+    role_id = db.Column(db.Integer, db.ForeignKey("role.id"))  # 多对多的关系表，加入要关系的2个外键id
+
+
+#  角色表
+class Role(db.Model):
+    # 表名
+    __tablename__ = "role"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)  # 主键没有提升要硬输入
+    role_name = db.Column(db.String(16), nullable=False)
+    create_time = db.Column(db.DateTime, index=True, default=datetime.now)  # 创建时间
+    update_time = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    # 多对一  一个角色有多个用户，外键放在user表里
+    users = db.relationship('User', backref='role')
+    # 多对多  关联中间表 在有relationship这个配置的表中添加secondary="role_to_menu" 括号第一个参数是另外一个表模块名称，backref是自己的tablename名称
+    menus = db.relationship('Menu', secondary="role_to_menu", backref='role')
+
+
+
+
 # 标签
 class Environment(db.Model):
     # 表名
@@ -52,7 +111,7 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)  # 主键没有提升要硬输入
     department = db.Column(db.String(16), nullable=False)
     username = db.Column(db.String(32), nullable=False, unique=True)  # 用户名 nullable 是否可以为空,unique=True保证字段唯一
-    password = db.Column(db.String(64), nullable=False)  # 密码 nullable 是否可以为空
+    password = db.Column(db.String(128), nullable=False)  # 密码 nullable 是否可以为空
     status = db.Column(db.Boolean, nullable=False, default=True)  # 真假代表正常异常状态
     userPic = db.Column(db.String(512))
     create_time = db.Column(db.DateTime, index=True, default=datetime.now)  # 创建时间
@@ -62,19 +121,18 @@ class User(db.Model):
     # feedbacks = db.relationship('Feedback', backref='user')
     # tags = db.relationship('Tag', backref='user')
     # 一对多，一个role有多个用户，外键
-    role_id = db.Column(db.Integer, db.ForeignKey('role.id'))
+    role_id = db.Column(db.Integer, db.ForeignKey('role.id'), default=3)
+
+    def hash_password(self, password):
+        """密码加密"""
+        self.password = sha256_crypt.encrypt(password)
+
+    def verify_password(self, password):
+        """校验密码"""
+        return sha256_crypt.verify(password, self.password)
 
 
-#  角色表
-class Role(db.Model):
-    # 表名
-    __tablename__ = "role"
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)  # 主键没有提升要硬输入
-    role_name = db.Column(db.Enum("超级管理员", "普通用户"), default="None")
-    create_time = db.Column(db.DateTime, index=True, default=datetime.now)  # 创建时间
-    update_time = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
-    # 多对一  一个角色有多个用户，外键放在user表里
-    users = db.relationship('User', backref='role')
+
 
 
 # 经办人表
@@ -208,7 +266,7 @@ class K8s_job(db.Model):
     create_time = db.Column(db.DateTime, default=datetime.now)
     update_time = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
     lastgray_build_id = db.Column(db.Integer)
-    lastgray_build_time = db.Column(db.DateTime)
+    lastgray_build_time = db.Column(db.DateTime, onupdate=datetime.now)
     lastprod_build_id = db.Column(db.Integer)
     lastprod_build_time = db.Column(db.DateTime)
     #  多对一
@@ -223,6 +281,3 @@ class K8s_build_id(db.Model):
     update_time = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
     # 1对多  外键放多的里面
     k8s_job_id = db.Column(db.Integer, db.ForeignKey('k8s_job.id'))
-
-
-
