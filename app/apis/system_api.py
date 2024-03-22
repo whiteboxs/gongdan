@@ -48,6 +48,47 @@ from collections import defaultdict
 # 类视图 cbv class based view 这里写的都是class类视图 这里和前端后集成里的view差不多
 # 类视图不用加装饰器，单独写个路由文件配合使用名称为urls.py
 
+
+# 路由表
+
+class all_route(Resource):
+    @jwt_required()
+    def get(self):
+        menus = Menu.query.filter(Menu.menu_type.contains('menu')).all()
+        menu_list = []
+        for menu in menus:
+            menu.info = {
+                'id': menu.id,
+                'title': menu.menu_name,
+                'path': menu.menu_path if menu.menu_path else None,
+                'permiss': menu.permiss,
+                'route_name': menu.route_name,
+                'route_component': menu.route_component,
+            }
+            menu_list.append(menu.info)
+        return {'code': 200, 'msg': 'ok', 'data': menu_list}
+
+
+# 单个用户路由表
+class route(Resource):
+    @jwt_required()
+    def get(self, role_id):
+        routes = db.session.query(Roletomenu, Menu).filter(Roletomenu.role_id == role_id, Roletomenu.menu_id == Menu.id).all()
+        route_list = []
+
+        for _, menu in routes:
+            route_info = {
+                'menu_id': menu.id,
+                'title': menu.menu_name,
+                'path': menu.menu_path,
+                'permiss': menu.permiss,
+                'route_name': menu.route_name,
+                'route_component': menu.route_component
+            }
+            route_list.append(route_info)
+
+        return {'data': route_list, 'msg': 'ok', 'role_id': role_id}
+
 # 菜单权限
 class all_menus(Resource):
     @jwt_required()
@@ -65,13 +106,12 @@ class all_menus(Resource):
                 'parentid': menu.parentId,
                 'parentname': menu.parentName,
                 'permiss': menu.permiss,
+                'route_name': menu.route_name,
                 'route_component': menu.route_component,
                 'create_time': menu.create_time.strftime('%Y-%m-%d %H:%M:%S'),
             }
             menu_list.append(menu.info)
         return {'code': 200, 'msg': 'ok', 'data': menu_list}
-
-
 
 
 # 读取菜单权限
@@ -81,7 +121,6 @@ class menu_permiss(Resource):
         menu_permiss = Roletomenu.query.filter_by(role_id=role_id).all()
         menu_permiss_list = [permission.menu_id for permission in menu_permiss]
         return {'access': menu_permiss_list, 'msg': 'ok', 'role_id': role_id}
-
 
     def put(self, role_id):
         # 查所有角色当前返回的menu信息
@@ -106,7 +145,7 @@ class menu_permiss(Resource):
             return jsonify(code=400, msg="更新权限失败")
 
 
-# 添加菜单
+# 添加菜单  更新，删除菜单
 class add_menu(Resource):
     @jwt_required()
     def post(self):
@@ -119,6 +158,7 @@ class add_menu(Resource):
         parser.add_argument('parentid', type=int, location='form')
         parser.add_argument('parentname', type=str, location='form')
         parser.add_argument('permiss', type=int, location='form')
+        parser.add_argument('route_name', type=str, location='form')
         parser.add_argument('route_component', type=str, location='form')
         args = parser.parse_args()
         if Menu.query.filter_by(menu_name=args['menu_name']).first() is not None:
@@ -132,13 +172,14 @@ class add_menu(Resource):
                        'msg': '创建菜单完成',
                        'code': 201,
                        'id': menu.id,
-                       'menu_name': menu.menu_name,
-                       'menu_path': menu.menu_path,
+                       'title': menu.menu_name,
+                       'path': menu.menu_path,
                        'menu_type': menu.menu_type,
                        'icon': menu.icon,
                        'parentid': menu.parentId,
                        'parentname': menu.parentName,
                        'permiss': menu.permiss,
+                       'route_name': menu.route_name,
                        'route_component': menu.route_component,
                    }, 201
         except Exception as e:
@@ -146,26 +187,72 @@ class add_menu(Resource):
             db.session.rollback()
             return jsonify(code=400, msg="创建菜单失败")
 
-#测试
+# 编辑，删除菜单
 class menu(Resource):
     @jwt_required()
-    def post(self, role_id):
-        role = Role.query.get(role_id)
-        print("---", role)
-        # 查所有角色当前返回的menu信息
-        menu = Menu.query.all()
-        # 显示课程表名字
-        print(menu)
-        for i in menu:
-            print(i.menu_name)
-        # 这里角色的菜单导入到中间表 id1的学生有几门课
-        role.menus = menu
-        db.session.add(role)
-        db.session.commit()
-        return jsonify({'message': 'ok'})
+    def put(self, menu_id):
+        parser = reqparse.RequestParser()
+        parser.add_argument('menu_name', type=str, required=True, location='form')
+        parser.add_argument('menu_path', type=str, location='form')
+        parser.add_argument('menu_type', type=str, required=True, location='form')
+        parser.add_argument('icon', type=str, required=True, location='form')
+        parser.add_argument('parentid', type=int, location='form')
+        parser.add_argument('parentname', type=str, location='form')
+        parser.add_argument('permiss', type=int, location='form')
+        parser.add_argument('route_name', type=str, location='form')
+        parser.add_argument('route_component', type=str, location='form')
+        args = parser.parse_args()
+        menu = Menu.query.get(menu_id)
+        if menu:
+            try:
+                menu.menu_name = args['menu_name']
+                menu.menu_path = args['menu_path']
+                menu.menu_type = args['menu_type']
+                menu.icon = args['icon']
+                menu.parentId = args['parentid']
 
 
 
+                menu.parentName = args['parentname']
+                menu.permiss = args['permiss']
+                menu.route_name = args['route_name']
+                menu.route_component = args['route_component']
+                db.session.commit()
+                return {
+                    'msg': '更新菜单完成',
+                    'code': 200,
+                    'id': menu_id,
+                    'title': args['menu_name'],
+                    'path': args['menu_path'],
+                    'menu_type': args['menu_type'],
+                    'icon': args['icon'],
+                    'parentid': args['parentid'],
+                    'parentname': args['parentname'],
+                    'permiss': args['permiss'],
+                    'route_name': args['route_name'],
+                    'route_component': args['route_component'],
+                }
+            except Exception as e:
+                print(e)
+                db.session.rollback()
+                return jsonify(code=400, msg="更新菜单失败")
+        else:
+            return jsonify({"code": 400, "msg": "菜单不存在"})
+
+
+    def delete(self, menu_id):
+        menu = Menu.query.get(menu_id)
+        if not menu:
+            return {'msg': '菜单没有找到'}, 404
+        else:
+            try:
+                db.session.delete(menu)  # 删除指定的菜单对象
+                db.session.commit()  # 提交会话以保存删除操作
+                return {'msg': '菜单已删除'}, 204
+            except Exception as e:
+                print(e)
+                db.session.rollback()  # 回滚会话以撤销删除操作
+                return {'msg': '删除菜单失败'}, 500
 
 
 class admin_login(Resource):
@@ -355,7 +442,7 @@ class userinfo(Resource):
 
         if not user:
             return {'msg': '用户没有找到'}, 404
-        db.session.delete(user)
+        db.session.delete
         db.session.commit()
         return {'msg': '用户已删除'}, 204
 
@@ -378,7 +465,6 @@ class userstatus(Resource):
         user.save()
 
         return {'message': 'User status updated successfully'}, 200
-
 
 
 # 添加 job
@@ -438,13 +524,14 @@ class all_roles(Resource):
                 'data': roles
                 }
 
+
 # 查询，删除单个角色
 class role(Resource):
     @jwt_required()
     def get(self, role_id):
         role = Role.query.get(role_id)
         if role:
-            if role_id == 1:  # 如果 role_id 为 1，则返回所有菜单
+            if role_id == 1:  # 如果 role_id 为 1，1是admin 则返回所有菜单
                 all_menus = Menu.query.all()
                 menulist = []
                 for menu in all_menus:
@@ -457,12 +544,14 @@ class role(Resource):
                         'parentid': menu.parentId,
                         'parentname': menu.parentName,
                         'permiss': menu.permiss,
+                        'route_name': menu.route_name,
                         'route_component': menu.route_component,
                         'create_time': menu.create_time.strftime('%Y-%m-%d %H:%M:%S'),
                     }
                     menulist.append(menu_data)
                 return {
                     'msg': 'ok',
+                    'code': 200,
                     'menus': menulist,
                 }
             else:
@@ -484,16 +573,20 @@ class role(Resource):
                         'parentid': menu.parentId,
                         'parentname': menu.parentName,
                         'permiss': menu.permiss,
+                        'route_name': menu.route_name,
                         'route_component': menu.route_component,
                         'create_time': menu.create_time.strftime('%Y-%m-%d %H:%M:%S'),
                     }
                     menulist.append(menu_data)
+                    # 排序   添加这个是降序reverse=True，不加是升序
+                    sorted_users = sorted(menulist, key=lambda x: x['id'])
                 return {
                     'msg': 'ok',
+                    'code': 200,
                     'id': role.id,
                     'role_name': role.role_name,
                     'users': userlist,
-                    'menus': menulist,
+                    'menus': sorted_users,
                 }
         else:
             return {'msg': '角色没有找到'}, 404
@@ -503,7 +596,7 @@ class role(Resource):
         role = Role.query.get(role_id)
         if not role:
             return {'msg': '角色没有找到', 'code': '404'}, 404
-        db.session.delete(role)
+        db.session.delete
         db.session.commit()
         return {'msg': '角色已删除', 'code': '204'}, 204
 
@@ -628,7 +721,8 @@ class myupload(Resource):
         self.upload_folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../upload')
         if not os.path.exists(self.upload_folder):
             os.makedirs(self.upload_folder)
-    def post(self,user_id):
+
+    def post(self, user_id):
         if 'file' not in request.files:
             return 'No file part in the request', 400
 
@@ -725,7 +819,7 @@ class ticket(Resource):
         ticket = Ticket.query.get
         if not ticket:
             return {'msg': '工单没有找到'}, 404
-        db.session.delete(ticket)
+        db.session.delete
         db.session.commit()
         return {'msg': '已删除'}, 204
 

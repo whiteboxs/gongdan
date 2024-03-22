@@ -2,15 +2,14 @@
 from .exts import db
 from datetime import datetime
 from passlib.hash import sha256_crypt
-
+from sqlalchemy import event
 
 # from wtforms.validators import DataRequired
 
 # 删除重建数据库
 # DROP DATABASE restful;
 # CREATE DATABASE restful CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
-# 进入项目根目录
-# flask db init  第一次表单写好后执行，就执行一次
+# 进入项目根目录  第一次表单写好后执行，就执行一次
 # flask db migrate 生产迁移文件
 # flask db upgrade 执行迁移文件中的升级
 # flask db downgrade 执行迁移文件中的降级=撤回命令
@@ -58,10 +57,19 @@ class Menu(db.Model):
     parentId = db.Column(db.Integer)
     permiss = db.Column(db.Integer, unique=True, autoincrement=True)
     parentName = db.Column(db.String(32))
+    route_name = db.Column(db.String(32))  # 路由名称 nullable 是否可以为空
     route_component = db.Column(db.String(32))
     create_time = db.Column(db.DateTime, index=True, default=datetime.now)
     # 有多对多来维护3表关系了
-
+# 定义事件监听器
+@event.listens_for(Menu, 'before_insert')
+def before_insert_listener(mapper, connection, target):
+    # 查询数据库中最后一条记录的 permiss 字段值
+    last_record = db.session.query(Menu).order_by(Menu.id.desc()).first()
+    if last_record:
+        target.permiss = last_record.permiss + 1  # 将 permiss 值设为最后一条记录的值加一
+    else:
+        target.permiss = 1  # 如果数据库中没有记录，则将 permiss 值设为 1
 
 
 

@@ -178,7 +178,8 @@ class node_start(Resource):
         args = parser.parse_args()
         program = args['program']
         ip = args['ip']
-        super_server = ServerProxy("http://user:123@" + ip + ":9001/RPC2")
+        super_server = ServerProxy("http://"
+                                   "user:123@" + ip + ":9001/RPC2")
         node_list = super_server.supervisor.getProcessInfo(program)
         if node_list['statename'] == 'RUNNING':
             return {'code': 200, 'msg': '程序已经启动'}

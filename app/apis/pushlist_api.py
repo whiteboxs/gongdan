@@ -108,7 +108,7 @@ class k8s_jobinfo(Resource):
         print(k8s_job)
         if not k8s_job:
             return {'msg': 'job没有找到', 'code': '404'}, 404
-        db.session.delete(k8s_job)
+        db.session.delete
         db.session.commit()
         return {'msg': 'job已删除', 'code': '204'}, 204
 

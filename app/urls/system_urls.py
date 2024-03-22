@@ -4,15 +4,23 @@ from ..exts import api
 from ..apis.system_api import *
 
 # 路由
+# 查询所有路由
+api.add_resource(all_route, '/api/all/route')
+# 查询角色路由
+api.add_resource(route, '/api/route/<int:role_id>')
+
+
 # 管理员
 api.add_resource(admin_login, '/api/admin/login')
 api.add_resource(admin_session_check, '/api//admin/session')
 api.add_resource(admin_logout, '/api/admin/logout')
 # 查询所有菜单
 api.add_resource(all_menus, '/api/all/menus')
-# 创建菜单
+
+# 创建菜单，
 api.add_resource(add_menu, '/api/menu')
-# 查询菜单
+
+# 查询,编辑菜单
 api.add_resource(menu, '/api/menu/<int:menu_id>')
 
 # 角色菜单的权限
